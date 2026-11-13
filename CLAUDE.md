@@ -6,13 +6,13 @@ Project memory for Claude Code in this repository. Keep this file short, accurat
 
 Start a new Strutvane project in one command: npm create strutvane@latest. Presets for full-stack (API + UI + auth), API-only and UI-only, with configs, .env/.env.example, local Docker services, tests and CI ready.
 
-It is one repo of the **Strutvane** polyrepo ecosystem (one GitHub repo per package; see ADR-0002). The hub with the full blueprint is https://github.com/vishwajitvm/strutvane. Locally it is the umbrella folder two levels up: `../../docs/`.
+It is one repo of the **Strutvane** polyrepo ecosystem (one GitHub repo per package; see ADR-0002). The hub with the full blueprint is https://github.com/vishwajit-vm/strutvane. Locally it is the umbrella folder two levels up: `../../docs/`.
 
 ## Status
 
 - **Phase: design / pre-implementation.** There is no source code yet. Do not start implementing unless the user explicitly asks.
 - The source of truth for decisions is `../../docs/00-executive-summary.md` (D1–D20). If anything here conflicts with it, that file wins.
-- The package spec is `../../docs/05-developer-experience.md` (online: https://github.com/vishwajitvm/strutvane/blob/main/docs/05-developer-experience.md).
+- The package spec is `../../docs/05-developer-experience.md` (online: https://github.com/vishwajit-vm/strutvane/blob/main/docs/05-developer-experience.md).
 
 ## Boundaries (non-negotiable)
 
