@@ -12,4 +12,5 @@
   - Files are written through `@strutvane/devkit`'s staged, transactional file system: a failure halfway rolls every file back and removes the folder.
   - `.env` gets generated secrets (the first admin password is shown once); `.env.example` is written by devkit's env editor and never contains a secret. `env.schema.ts` validates the same keys with Zod.
   - Local services in `docker/compose.yaml`, git-ignored by default (ADR-0006); `--docker=commit` to share it. Credentials come from `.env`, ports bind to 127.0.0.1.
+  - Generated projects depend on the project-local `@strutvane/cli` (the `strutvane` launcher runs it), and the starter API route is explicitly `public: true` (custom routes need a signed-in user otherwise).
   - Generated projects pass their own `lint`, `typecheck` and `test` from the first minute and include a README, a CLAUDE.md and a GitHub Actions workflow with SHA-pinned actions.
