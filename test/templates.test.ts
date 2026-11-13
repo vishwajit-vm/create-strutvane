@@ -449,3 +449,13 @@ describe('util', () => {
     )
   })
 })
+
+describe('integration regressions (local e2e journey)', () => {
+  test('the project-local CLI is a dev dependency, so the `strutvane` launcher never falls back to npx', () => {
+    expect(devDependencies(at({ name: 'a' }))['@strutvane/cli']).toBe(STRUTVANE_VERSION)
+  })
+
+  test('the starter route is explicitly public (custom routes require sign-in by default)', () => {
+    expect(contentOf({ name: 'a' }, 'app/http/routes/api.ts')).toContain('public: true,')
+  })
+})

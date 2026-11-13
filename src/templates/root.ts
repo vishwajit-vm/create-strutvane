@@ -61,6 +61,8 @@ export function dependencies(o: ProjectOptions): Record<string, string> {
 export function devDependencies(o: ProjectOptions): Record<string, string> {
   const entries: [string, string][] = [
     ['strutvane', STRUTVANE_VERSION],
+    // The launcher (`strutvane`) runs the project-local CLI; without it every command falls back to npx.
+    ['@strutvane/cli', STRUTVANE_VERSION],
     ...pinned('@biomejs/biome', '@types/node', 'typescript', 'vitest'),
   ]
   if (hasWeb(o)) {

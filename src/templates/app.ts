@@ -131,6 +131,8 @@ function appFiles(o: ProjectOptions): GeneratedFile[] {
         '',
         'export default [',
         "  route.get('/hello', {",
+        '    // Routes need a signed-in user unless they set `permission` or `public: true`.',
+        '    public: true,',
         `    handler: () => ({ message: 'Hello from ${o.name}' }),`,
         '  }),',
         ']',

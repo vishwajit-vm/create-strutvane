@@ -355,6 +355,8 @@ import { route } from '@strutvane/framework/http'
 
 export default [
   route.get('/hello', {
+    // Routes need a signed-in user unless they set `permission` or `public: true`.
+    public: true,
     handler: () => ({ message: 'Hello from fabrikam' }),
   }),
 ]
@@ -825,6 +827,7 @@ export const env = defineEnv(envSchema)
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.7",
+    "@strutvane/cli": "0.1.0-next.0",
     "@types/node": "24.19.2",
     "strutvane": "0.1.0-next.0",
     "typescript": "6.0.3",

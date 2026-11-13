@@ -77,7 +77,9 @@ export const STUBS = `declare module '@strutvane/framework' {
   export function defineModel(name: string, fields: Record<string, FieldBuilder>, options?: object): unknown
 }
 declare module '@strutvane/framework/http' {
-  export const route: { get(path: string, definition: { handler: () => unknown }): unknown }
+  export const route: {
+    get(path: string, definition: { public?: boolean; permission?: string; handler: () => unknown }): unknown
+  }
 }
 declare module '@strutvane/framework/database' {
   export function defineSeeder(definition: { run(): Promise<void> }): unknown
