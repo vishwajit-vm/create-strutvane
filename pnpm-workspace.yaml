@@ -1,0 +1,6 @@
+# TEMPORARY (ADR-0016): link to sibling checkouts until @strutvane/contracts, core and devkit
+# 0.1.0-next.0 are on npm. Remove before committing; CI's check-deps guard rejects it.
+overrides:
+  "@strutvane/contracts": link:../contracts
+  "@strutvane/core": link:../core
+  "@strutvane/devkit": link:../devkit

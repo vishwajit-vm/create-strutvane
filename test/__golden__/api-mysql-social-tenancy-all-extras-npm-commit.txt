@@ -1,0 +1,1139 @@
+===== .editorconfig =====
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+trim_trailing_whitespace = false
+
+===== .env.example =====
+# ─── Application ────────────────────────────────────────────────
+# Shown in the UI, emails and logs
+APP_NAME=acme-api
+# Where this copy of the app runs (local | test | staging | production)
+APP_ENV=local
+# Encryption key (32 random bytes). Rotate with: sv key:generate
+APP_KEY=
+# Public URL of this app
+APP_URL=http://localhost:3000
+# Port the dev server listens on
+APP_PORT=3000
+# Detailed error pages. Never true in production (boot refuses)
+APP_DEBUG=true
+# Timezone for dates and schedules
+APP_TIMEZONE=UTC
+# Default language for messages
+APP_LOCALE=en
+
+# ─── Logging & Observability ────────────────────────────────────
+# Lowest level that gets logged (trace | debug | info | warn | error | fatal)
+LOG_LEVEL=info
+# pretty for development, json for production (pretty | json)
+LOG_FORMAT=pretty
+# @strutvane/logs: file logs, request logging and the log viewer
+LOGS_ENABLED=true
+# Where logs are stored. Use database with several servers (file | database | stdout)
+LOGS_DRIVER=file
+# Folder for log files (git-ignored)
+LOGS_PATH=storage/logs
+# Delete log files older than this many days
+LOGS_RETENTION_DAYS=60
+# Size cap per daily file before a new part starts
+LOGS_MAX_DAILY_SIZE=30MB
+# Log request bodies (off by default: they may contain personal data)
+LOGS_REQUEST_BODIES=false
+# Built-in log viewer
+LOGS_VIEWER=true
+# Where the log viewer is served
+LOGS_VIEWER_PATH=/_strutvane/logs
+# Viewer access token for production when auth is not installed (leave empty otherwise)
+LOGS_VIEWER_TOKEN=
+# Send traces/metrics/logs to an OpenTelemetry collector (set true when one runs)
+OTEL_ENABLED=false
+# Service name shown in your observability tool
+OTEL_SERVICE_NAME=acme-api-api
+# OTLP/HTTP collector endpoint
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+
+# ─── Database ───────────────────────────────────────────────────
+# Database driver (postgres | mysql | sqlite | azure-postgres | azure-mysql)
+DB_CONNECTION=mysql
+# Database host
+DB_HOST=127.0.0.1
+# Database port
+DB_PORT=3306
+# Database name
+DB_DATABASE=acme_api
+# Database user
+DB_USERNAME=acme_api
+# Generated for the local database
+DB_PASSWORD=
+# Use TLS (always true for cloud databases)
+DB_SSL=false
+# Minimum pooled connections
+DB_POOL_MIN=0
+# Maximum pooled connections
+DB_POOL_MAX=10
+
+# ─── Cache / Queue ──────────────────────────────────────────────
+# Cache store (memory | valkey | database)
+CACHE_DRIVER=valkey
+# Queue backend (sync runs jobs immediately) (sync | valkey | database)
+QUEUE_DRIVER=valkey
+# Valkey/Redis connection (local Docker service)
+VALKEY_URL=redis://127.0.0.1:6379
+
+# ─── Mail ───────────────────────────────────────────────────────
+# How emails are sent (log writes them to the log) (smtp | ses | resend | postmark | log)
+MAIL_DRIVER=smtp
+# SMTP host
+MAIL_HOST=127.0.0.1
+# SMTP port. Local Mailpit inbox: http://localhost:8025
+MAIL_PORT=1025
+# Sender address
+MAIL_FROM_ADDRESS=no-reply@acme-api.test
+# Sender name
+MAIL_FROM_NAME=acme-api
+
+# ─── Auth ───────────────────────────────────────────────────────
+# Signs sessions and tokens. Rotate with: sv auth:secret:rotate
+AUTH_SECRET=
+# Where sessions are stored (database | valkey | jwt)
+AUTH_SESSION_DRIVER=database
+# Minutes of inactivity before sign-out
+AUTH_SESSION_LIFETIME=120
+# Seconds an API access token is valid
+AUTH_JWT_TTL=900
+# Let new users sign up
+AUTH_ALLOW_REGISTRATION=true
+# Two-factor authentication (off | optional | required)
+AUTH_MFA=optional
+# Google sign-in: OAuth client id
+AUTH_GOOGLE_CLIENT_ID=
+# Google sign-in: OAuth client secret
+AUTH_GOOGLE_CLIENT_SECRET=
+# GitHub sign-in: OAuth app client id
+AUTH_GITHUB_CLIENT_ID=
+# GitHub sign-in: OAuth app client secret
+AUTH_GITHUB_CLIENT_SECRET=
+# First admin user, created by the seeder
+SEED_ADMIN_EMAIL=admin@acme-api.test
+# Generated when the project was created and printed once
+SEED_ADMIN_PASSWORD=
+# Record who changed what (audit log)
+AUDIT_ENABLED=true
+
+# ─── Tenancy ────────────────────────────────────────────────────
+# Multi-tenant mode (each company only sees its own data)
+TENANCY_ENABLED=true
+# How tenant data is separated (shared | schema | database)
+TENANCY_STRATEGY=shared
+# How the current tenant is found, in order
+TENANCY_RESOLVE=subdomain,header,session
+
+# ─── HTTP / API ─────────────────────────────────────────────────
+# Path prefix for the API
+API_PREFIX=/api
+# Current API version
+API_VERSION=v1
+# Serve interactive API docs at /docs and the spec at /openapi.json
+API_DOCS=true
+# Browser origins allowed to call the API (comma separated)
+CORS_ORIGINS=http://localhost:3000
+# Requests allowed per client
+RATE_LIMIT=120/min
+
+===== .gitattributes =====
+# Normalise line endings: LF in the repository on every OS (Windows checkouts stay consistent).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
+
+===== .github/workflows/ci.yml =====
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test
+
+===== .gitignore =====
+# Dependencies
+node_modules/
+
+# Build and test output
+dist/
+coverage/
+*.tsbuildinfo
+
+# Environment: real values and secrets stay on this machine. .env.example IS committed.
+.env
+.env.*
+!.env.example
+
+# Strutvane state (generated registry, types, staging) and runtime files
+.strutvane/
+storage/*
+!storage/.gitkeep
+*.log
+
+# Docker: committed on purpose (--docker=commit). Still local development only.
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+===== .strutvane/README.md =====
+# .strutvane
+
+Generated by Strutvane (registry, types, upgrade bases, staging for safe file changes).
+Git-ignored and rebuilt on `dev` / `build`. Do not edit files here.
+
+===== CLAUDE.md =====
+# CLAUDE.md: acme-api
+
+Project memory for AI assistants. Keep it short and current.
+
+## What this is
+
+A Strutvane API: database, a documented REST API and background work built on Strutvane (TypeScript, ESM, Node 24+).
+Preset: `api`, database: `mysql`, auth: `email`, `google`, `github`, multi-tenant.
+
+## Rules
+
+- Models in `app/models/` are the source of truth. Change a model, then run `npm run sv -- migrate`; never hand-edit applied migrations.
+- Generate code with `npm run sv -- make:*` (model, policy, job, …) instead of writing boilerplate.
+- Read settings through `config/*.ts`, never `process.env`. A new env key goes into `env.schema.ts`, `.env.example` and `.env`.
+- Never commit `.env`, secrets, `storage/` or `.strutvane/`.
+- Log with the app logger, never `console.*`. Never log secrets or request bodies.
+- Authorization is deny-by-default: add a policy for every new model.
+
+## Before you finish a change
+
+```bash
+npm run lint
+npm run typecheck
+npm run test
+```
+
+===== README.md =====
+# acme-api
+
+This is a Strutvane API: database, a documented REST API and background work, created with [create-strutvane](https://github.com/vishwajit-vm/create-strutvane).
+
+## Quick start
+
+You need Node.js 24 or newer and Docker (for the local database and services).
+
+```bash
+npm install
+npm run services:up     # starts the local database and services (Docker)
+npm run sv -- migrate
+npm run sv -- db:seed
+npm run dev
+```
+
+The API runs on http://localhost:3000 (interactive API docs at http://localhost:3000/docs).
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Start the API (and UI) with hot reload |
+| `npm run build` | Production build |
+| `npm run start` | Run the production build |
+| `npm run test` | Unit and feature tests (Vitest) |
+| `npm run lint` | Lint and format check (Biome) |
+| `npm run typecheck` | TypeScript check |
+| `npm run services:up` | Start local Docker services |
+| `npm run services:down` | Stop them (data is kept in volumes) |
+| `npm run sv -- make:model Invoice` | Add a model: migration, CRUD API, permissions, tests and UI pages |
+| `npm run sv -- migrate` | Generate and apply migrations from your models |
+| `npm run sv -- routes` | List every API route |
+| `npm run sv -- env:check` | Compare .env with .env.example |
+
+## Project layout
+
+- `app/`: your code (models, policies, services, routes, jobs, providers)
+- `database/`: migrations (generated, committed), seeders and factories
+- `config/`: typed settings that read the validated environment
+- `tests/`: unit, feature tests
+- `env.ts` / `env.schema.ts`: every environment variable, validated at startup
+- `strutvane.config.ts`: which Strutvane packages are active
+- `docker/`: local services only (committed for the team, never deployed)
+- `.strutvane/`, `storage/`: generated and runtime files, git-ignored
+
+## Environment variables
+
+`.env` holds your local values and secrets and is **never committed**. `.env.example` lists every key
+with documentation and is committed. The app checks every key at startup and stops with one clear
+message if something is missing or invalid.
+
+| Key | Default | What it does |
+|---|---|---|
+| **Application** | | |
+| `APP_NAME` | `acme-api` | Shown in the UI, emails and logs |
+| `APP_ENV` | `local` | Where this copy of the app runs (local \| test \| staging \| production) |
+| `APP_KEY` | _generated_ | Encryption key (32 random bytes). Rotate with: sv key:generate |
+| `APP_URL` | `http://localhost:3000` | Public URL of this app |
+| `APP_PORT` | `3000` | Port the dev server listens on |
+| `APP_DEBUG` | `true` | Detailed error pages. Never true in production (boot refuses) |
+| `APP_TIMEZONE` | `UTC` | Timezone for dates and schedules |
+| `APP_LOCALE` | `en` | Default language for messages |
+| **Logging & Observability** | | |
+| `LOG_LEVEL` | `info` | Lowest level that gets logged (trace \| debug \| info \| warn \| error \| fatal) |
+| `LOG_FORMAT` | `pretty` | pretty for development, json for production (pretty \| json) |
+| `LOGS_ENABLED` | `true` | @strutvane/logs: file logs, request logging and the log viewer |
+| `LOGS_DRIVER` | `file` | Where logs are stored. Use database with several servers (file \| database \| stdout) |
+| `LOGS_PATH` | `storage/logs` | Folder for log files (git-ignored) |
+| `LOGS_RETENTION_DAYS` | `60` | Delete log files older than this many days |
+| `LOGS_MAX_DAILY_SIZE` | `30MB` | Size cap per daily file before a new part starts |
+| `LOGS_REQUEST_BODIES` | `false` | Log request bodies (off by default: they may contain personal data) |
+| `LOGS_VIEWER` | `true` | Built-in log viewer |
+| `LOGS_VIEWER_PATH` | `/_strutvane/logs` | Where the log viewer is served |
+| `LOGS_VIEWER_TOKEN` | _empty_ | Viewer access token for production when auth is not installed (leave empty otherwise) |
+| `OTEL_ENABLED` | `false` | Send traces/metrics/logs to an OpenTelemetry collector (set true when one runs) |
+| `OTEL_SERVICE_NAME` | `acme-api-api` | Service name shown in your observability tool |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OTLP/HTTP collector endpoint |
+| **Database** | | |
+| `DB_CONNECTION` | `mysql` | Database driver (postgres \| mysql \| sqlite \| azure-postgres \| azure-mysql) |
+| `DB_HOST` | `127.0.0.1` | Database host |
+| `DB_PORT` | `3306` | Database port |
+| `DB_DATABASE` | `acme_api` | Database name |
+| `DB_USERNAME` | `acme_api` | Database user |
+| `DB_PASSWORD` | _generated_ | Generated for the local database |
+| `DB_SSL` | `false` | Use TLS (always true for cloud databases) |
+| `DB_POOL_MIN` | `0` | Minimum pooled connections |
+| `DB_POOL_MAX` | `10` | Maximum pooled connections |
+| **Cache / Queue** | | |
+| `CACHE_DRIVER` | `valkey` | Cache store (memory \| valkey \| database) |
+| `QUEUE_DRIVER` | `valkey` | Queue backend (sync runs jobs immediately) (sync \| valkey \| database) |
+| `VALKEY_URL` | `redis://127.0.0.1:6379` | Valkey/Redis connection (local Docker service) |
+| **Mail** | | |
+| `MAIL_DRIVER` | `smtp` | How emails are sent (log writes them to the log) (smtp \| ses \| resend \| postmark \| log) |
+| `MAIL_HOST` | `127.0.0.1` | SMTP host |
+| `MAIL_PORT` | `1025` | SMTP port. Local Mailpit inbox: http://localhost:8025 |
+| `MAIL_FROM_ADDRESS` | `no-reply@acme-api.test` | Sender address |
+| `MAIL_FROM_NAME` | `acme-api` | Sender name |
+| **Auth** | | |
+| `AUTH_SECRET` | _generated_ | Signs sessions and tokens. Rotate with: sv auth:secret:rotate |
+| `AUTH_SESSION_DRIVER` | `database` | Where sessions are stored (database \| valkey \| jwt) |
+| `AUTH_SESSION_LIFETIME` | `120` | Minutes of inactivity before sign-out |
+| `AUTH_JWT_TTL` | `900` | Seconds an API access token is valid |
+| `AUTH_ALLOW_REGISTRATION` | `true` | Let new users sign up |
+| `AUTH_MFA` | `optional` | Two-factor authentication (off \| optional \| required) |
+| `AUTH_GOOGLE_CLIENT_ID` | _empty_ | Google sign-in: OAuth client id |
+| `AUTH_GOOGLE_CLIENT_SECRET` | _empty_ | Google sign-in: OAuth client secret |
+| `AUTH_GITHUB_CLIENT_ID` | _empty_ | GitHub sign-in: OAuth app client id |
+| `AUTH_GITHUB_CLIENT_SECRET` | _empty_ | GitHub sign-in: OAuth app client secret |
+| `SEED_ADMIN_EMAIL` | `admin@acme-api.test` | First admin user, created by the seeder |
+| `SEED_ADMIN_PASSWORD` | _generated_ | Generated when the project was created and printed once |
+| `AUDIT_ENABLED` | `true` | Record who changed what (audit log) |
+| **Tenancy** | | |
+| `TENANCY_ENABLED` | `true` | Multi-tenant mode (each company only sees its own data) |
+| `TENANCY_STRATEGY` | `shared` | How tenant data is separated (shared \| schema \| database) |
+| `TENANCY_RESOLVE` | `subdomain,header,session` | How the current tenant is found, in order |
+| **HTTP / API** | | |
+| `API_PREFIX` | `/api` | Path prefix for the API |
+| `API_VERSION` | `v1` | Current API version |
+| `API_DOCS` | `true` | Serve interactive API docs at /docs and the spec at /openapi.json |
+| `CORS_ORIGINS` | `http://localhost:3000` | Browser origins allowed to call the API (comma separated) |
+| `RATE_LIMIT` | `120/min` | Requests allowed per client |
+
+## Secrets
+
+- Secrets were generated for you in `.env` when the project was created.
+- In staging and production, set them through your hosting platform or secret store, never in files.
+- Rotate the app key with `npm run sv -- key:generate`.
+
+===== app/commands/README.md =====
+# Commands
+
+Your own CLI commands, available as `npm run sv -- <name>`. Create one with `npm run sv -- make:command ImportCustomers`.
+
+===== app/events/README.md =====
+# Events
+
+Business facts other code reacts to, e.g. `invoice.sent`. Delivered reliably through an outbox.
+
+===== app/http/controllers/README.md =====
+# Controllers
+
+Full source of an endpoint when you need total control. Get one by ejecting: `npm run sv -- eject api Invoice`.
+
+===== app/http/middleware/README.md =====
+# Middleware
+
+Code that runs around requests (e.g. adding a header). Security headers, CORS, rate limiting and
+request logging are already set up by the framework.
+
+===== app/http/routes/api.ts =====
+/**
+ * Custom API routes. Every model already gets its CRUD routes automatically
+ * (list them with `npm run sv -- routes`); add only what doesn't fit CRUD here.
+ */
+import { route } from '@strutvane/framework/http'
+
+export default [
+  route.get('/hello', {
+    handler: () => ({ message: 'Hello from acme-api' }),
+  }),
+]
+
+===== app/jobs/README.md =====
+# Jobs
+
+Background work (sending emails, generating reports). Jobs retry with backoff and are idempotent.
+
+Create one with `npm run sv -- make:job SendInvoice`.
+
+===== app/listeners/README.md =====
+# Listeners
+
+React to events. Create one with `npm run sv -- make:listener NotifyCustomer`.
+
+===== app/mail/README.md =====
+# Mail
+
+Email templates. Create one with `npm run sv -- make:mail InvoiceSent`.
+
+===== app/models/user.model.ts =====
+/**
+ * Users. @strutvane/auth owns sign-in, sessions and roles; add your own profile fields here.
+ * Changing fields? Run `sv migrate` and a migration is generated for you.
+ */
+import { defineModel, field } from '@strutvane/framework'
+
+export default defineModel(
+  'User',
+  {
+    name: field.string().label('Full name').searchable(),
+    email: field.email().unique().searchable(),
+  },
+  {
+    timestamps: true,
+    softDeletes: true,
+    tenant: true,
+    audit: true,
+    title: 'name',
+  },
+)
+
+===== app/policies/README.md =====
+# Policies
+
+Who may do what. Rules like "managers may approve invoices up to 10,000" live here.
+Rules are deny-by-default and also filter list queries in SQL, so lists and single records always agree.
+
+Create one with `npm run sv -- make:policy Invoice`.
+
+===== app/providers/app.provider.ts =====
+/**
+ * Your application's own service provider (like Laravel's AppServiceProvider).
+ * - register(): bind your services in the container (synchronous).
+ * - boot(): start things after every package is registered.
+ */
+import { defineProvider } from '@strutvane/core'
+
+export default defineProvider({
+  name: 'app',
+  register() {
+    // app.container.singleton(BillingToken, () => new BillingService())
+  },
+})
+
+===== app/resources/README.md =====
+# Resources
+
+Optional per-model API and UI behaviour: hooks, custom actions, overridden handlers, columns.
+
+Create one with `npm run sv -- make:resource Invoice`. Without a resource file a model still gets its full CRUD API.
+
+===== app/services/README.md =====
+# Services
+
+Your business logic, as plain TypeScript classes or functions. Keep it out of routes and hooks so it
+is easy to test and reuse.
+
+===== biome.json =====
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.7/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "includes": ["**", "!**/*.md", "!database/migrations"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "asNeeded",
+      "trailingCommas": "all"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "suspicious": {
+        "noExplicitAny": "error",
+        "noFocusedTests": "error"
+      },
+      "style": {
+        "noNonNullAssertion": "error",
+        "useImportType": "error",
+        "useNodejsImportProtocol": "error"
+      }
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  }
+}
+
+===== config/api.ts =====
+/**
+ * The automatic REST API: every model gets CRUD endpoints under this prefix.
+ * Values come from the validated environment (env.ts); defaults live in .env.example.
+ */
+import { defineConfig } from '@strutvane/core'
+import { env } from '../env.ts'
+
+export default defineConfig({
+  prefix: env.API_PREFIX,
+  version: env.API_VERSION,
+  docs: env.API_DOCS,
+  rateLimit: env.RATE_LIMIT,
+  pagination: { defaultPageSize: 25, maxPageSize: 100 },
+})
+
+===== config/app.ts =====
+/**
+ * Application settings.
+ * Values come from the validated environment (env.ts); defaults live in .env.example.
+ */
+import { defineConfig } from '@strutvane/core'
+import { env } from '../env.ts'
+
+export default defineConfig({
+  name: env.APP_NAME,
+  env: env.APP_ENV,
+  url: env.APP_URL,
+  port: env.APP_PORT,
+  debug: env.APP_DEBUG,
+  timezone: env.APP_TIMEZONE,
+  locale: env.APP_LOCALE,
+})
+
+===== config/auth.ts =====
+/**
+ * Authentication and authorization (@strutvane/auth).
+ * Values come from the validated environment (env.ts); defaults live in .env.example.
+ */
+import { defineConfig } from '@strutvane/core'
+import { env } from '../env.ts'
+
+export default defineConfig({
+  methods: ['email', 'google', 'github'],
+  secret: env.AUTH_SECRET,
+  session: { driver: env.AUTH_SESSION_DRIVER, idleMinutes: env.AUTH_SESSION_LIFETIME },
+  tokens: { accessTokenSeconds: env.AUTH_JWT_TTL },
+  registration: env.AUTH_ALLOW_REGISTRATION,
+  mfa: env.AUTH_MFA,
+  social: {
+    google: { clientId: env.AUTH_GOOGLE_CLIENT_ID, clientSecret: env.AUTH_GOOGLE_CLIENT_SECRET },
+    github: { clientId: env.AUTH_GITHUB_CLIENT_ID, clientSecret: env.AUTH_GITHUB_CLIENT_SECRET },
+  },
+  /**
+   * Default roles. Every model gets permissions like `invoice.viewAny`, `invoice.create`, …
+   * (synced automatically). Map them to roles here; tenant admins can add custom roles later.
+   */
+  roles: {
+    admin: ['*'],
+    member: ['*.viewAny', '*.view', '*.create', '*.update'],
+    viewer: ['*.viewAny', '*.view'],
+  },
+  seedAdmin: { email: env.SEED_ADMIN_EMAIL, password: env.SEED_ADMIN_PASSWORD, role: 'admin' },
+  audit: { enabled: env.AUDIT_ENABLED },
+})
+
+===== config/cache.ts =====
+/**
+ * Cache store.
+ * Values come from the validated environment (env.ts); defaults live in .env.example.
+ */
+import { defineConfig } from '@strutvane/core'
+import { env } from '../env.ts'
+
+export default defineConfig({
+  driver: env.CACHE_DRIVER,
+  url: env.VALKEY_URL,
+  prefix: env.APP_NAME,
+})
+
+===== config/cors.ts =====
+/**
+ * Which browser origins may call the API.
+ * Values come from the validated environment (env.ts); defaults live in .env.example.
+ */
+import { defineConfig } from '@strutvane/core'
+import { env } from '../env.ts'
+
+export default defineConfig({
+  origins: env.CORS_ORIGINS,
+  credentials: true,
+})
+
+===== config/database.ts =====
+/**
+ * Database connection.
+ * Values come from the validated environment (env.ts); defaults live in .env.example.
+ */
+import { defineConfig } from '@strutvane/core'
+import { env } from '../env.ts'
+
+export default defineConfig({
+  default: env.DB_CONNECTION,
+  connection: {
+    host: env.DB_HOST,
+    port: env.DB_PORT,
+    database: env.DB_DATABASE,
+    user: env.DB_USERNAME,
+    password: env.DB_PASSWORD,
+    ssl: env.DB_SSL,
+    pool: { min: env.DB_POOL_MIN, max: env.DB_POOL_MAX },
+  },
+  migrations: { directory: 'database/migrations', table: 'strutvane_migrations' },
+  seeders: { directory: 'database/seeders' },
+})
+
+===== config/logging.ts =====
+/**
+ * Logging (@strutvane/logs): files with retention, request logging, and the viewer.
+ * Values come from the validated environment (env.ts); defaults live in .env.example.
+ */
+import { defineConfig } from '@strutvane/core'
+import { env } from '../env.ts'
+
+export default defineConfig({
+  level: env.LOG_LEVEL,
+  format: env.LOG_FORMAT,
+  enabled: env.LOGS_ENABLED,
+  driver: env.LOGS_DRIVER,
+  path: env.LOGS_PATH,
+  retentionDays: env.LOGS_RETENTION_DAYS,
+  maxDailySize: env.LOGS_MAX_DAILY_SIZE,
+  requestBodies: env.LOGS_REQUEST_BODIES,
+  /** Extra keys or patterns to redact, on top of the built-in rules. */
+  redact: { keys: [] as string[] },
+  requests: { ignore: ['/health', '/ready'], slowThresholdMs: 1000 },
+  viewer: { enabled: env.LOGS_VIEWER, path: env.LOGS_VIEWER_PATH, token: env.LOGS_VIEWER_TOKEN },
+})
+
+===== config/mail.ts =====
+/**
+ * Outgoing email.
+ * Values come from the validated environment (env.ts); defaults live in .env.example.
+ */
+import { defineConfig } from '@strutvane/core'
+import { env } from '../env.ts'
+
+export default defineConfig({
+  driver: env.MAIL_DRIVER,
+  smtp: { host: env.MAIL_HOST, port: env.MAIL_PORT },
+  from: { address: env.MAIL_FROM_ADDRESS, name: env.MAIL_FROM_NAME },
+})
+
+===== config/observability.ts =====
+/**
+ * OpenTelemetry traces, metrics and logs.
+ * Values come from the validated environment (env.ts); defaults live in .env.example.
+ */
+import { defineConfig } from '@strutvane/core'
+import { env } from '../env.ts'
+
+export default defineConfig({
+  enabled: env.OTEL_ENABLED,
+  serviceName: env.OTEL_SERVICE_NAME,
+  endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
+})
+
+===== config/queue.ts =====
+/**
+ * Background jobs.
+ * Values come from the validated environment (env.ts); defaults live in .env.example.
+ */
+import { defineConfig } from '@strutvane/core'
+import { env } from '../env.ts'
+
+export default defineConfig({
+  driver: env.QUEUE_DRIVER,
+  url: env.VALKEY_URL,
+  retry: { attempts: 5, backoff: 'exponential' as const },
+})
+
+===== config/tenancy.ts =====
+/**
+ * Multi-tenancy: each customer company (tenant) only ever sees its own rows. On PostgreSQL this is enforced by the database itself (row-level security, ADR-0007).
+ * Values come from the validated environment (env.ts); defaults live in .env.example.
+ */
+import { defineConfig } from '@strutvane/core'
+import { env } from '../env.ts'
+
+export default defineConfig({
+  enabled: env.TENANCY_ENABLED,
+  strategy: env.TENANCY_STRATEGY,
+  resolve: env.TENANCY_RESOLVE,
+})
+
+===== database/factories/README.md =====
+# Factories
+
+Fake-data builders for tests and seeders, generated with each model.
+
+Example: `await factory(Invoice).count(20).create()`.
+
+===== database/migrations/README.md =====
+# Migrations
+
+Generated by `npm run sv -- migrate` from your models: plain SQL, reviewed and committed.
+
+- Never edit a migration that has already been applied: create a new one instead.
+- Renames are always asked, never guessed. Destructive changes need confirmation.
+
+===== database/seeders/database.seeder.ts =====
+/**
+ * Seeds the database (`npm run sv -- db:seed`). Call other seeders from here, in order.
+ * The first admin user comes from SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD in .env.
+ */
+import { defineSeeder } from '@strutvane/framework/database'
+
+export default defineSeeder({
+  async run() {
+    // await call(InvoiceSeeder)
+  },
+})
+
+===== docker/compose.yaml =====
+# Local development services for acme-api.
+# Committed on purpose (--docker=commit). Still for local development only.
+#
+# Start:  docker compose --env-file .env -f docker/compose.yaml up -d --wait
+# Stop:   docker compose --env-file .env -f docker/compose.yaml down
+# Values (passwords, ports) come from .env: nothing secret is written in this file.
+name: acme-api
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:?set DB_DATABASE in .env}
+      MYSQL_USER: ${DB_USERNAME:?set DB_USERNAME in .env}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+    ports:
+      - "127.0.0.1:${DB_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 --silent"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  valkey:
+    image: valkey/valkey:9-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - valkey-data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  mailpit:
+    image: axllent/mailpit:v1.33
+    ports:
+      - "127.0.0.1:1025:1025" # SMTP
+      - "127.0.0.1:8025:8025" # inbox UI: http://localhost:8025
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  mysql-data:
+  valkey-data:
+
+===== env.schema.ts =====
+/**
+ * The shape of this app's environment, validated once at startup by `env.ts`.
+ *
+ * Generated by create-strutvane together with `.env.example`. When you add a variable, add it
+ * here AND to `.env.example` (`sv env:check` reports any difference).
+ */
+import { z } from 'zod'
+
+/** An empty value in .env means "not set". */
+const optional = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((value) => (value === '' ? undefined : value), schema.optional())
+
+/** "true" / "false" strings → booleans. Anything else is an error, never silently false. */
+const bool = z.enum(['true', 'false']).transform((value) => value === 'true')
+
+/** Comma-separated values → a trimmed list. */
+const list = z
+  .string()
+  .min(1)
+  .transform((value) =>
+    value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean),
+  )
+
+export const envSchema = z
+  .object({
+    // Application
+    APP_NAME: z.string().min(1),
+    APP_ENV: z.enum(['local', 'test', 'staging', 'production']),
+    APP_KEY: z.string().min(32, 'must be a long random secret (32+ characters)'),
+    APP_URL: z.url(),
+    APP_PORT: z.coerce.number().int().min(1).max(65535),
+    APP_DEBUG: bool,
+    APP_TIMEZONE: z.string().min(1),
+    APP_LOCALE: z.string().min(1),
+    // Logging & Observability
+    LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']),
+    LOG_FORMAT: z.enum(['pretty', 'json']),
+    LOGS_ENABLED: bool,
+    LOGS_DRIVER: z.enum(['file', 'database', 'stdout']),
+    LOGS_PATH: z.string().min(1),
+    LOGS_RETENTION_DAYS: z.coerce.number().int().min(0),
+    LOGS_MAX_DAILY_SIZE: z.string().regex(/^\d+(KB|MB|GB)$/i, 'use a size like 30MB'),
+    LOGS_REQUEST_BODIES: bool,
+    LOGS_VIEWER: bool,
+    LOGS_VIEWER_PATH: z.string().min(1),
+    LOGS_VIEWER_TOKEN: optional(z.string().min(1)),
+    OTEL_ENABLED: bool,
+    OTEL_SERVICE_NAME: z.string().min(1),
+    OTEL_EXPORTER_OTLP_ENDPOINT: z.url(),
+    // Database
+    DB_CONNECTION: z.enum(['postgres', 'mysql', 'sqlite', 'azure-postgres', 'azure-mysql']),
+    DB_HOST: z.string().min(1),
+    DB_PORT: z.coerce.number().int().min(1).max(65535),
+    DB_DATABASE: z.string().min(1),
+    DB_USERNAME: z.string().min(1),
+    DB_PASSWORD: z.string().min(32, 'must be a long random secret (32+ characters)'),
+    DB_SSL: bool,
+    DB_POOL_MIN: z.coerce.number().int().min(0),
+    DB_POOL_MAX: z.coerce.number().int().min(0),
+    // Cache / Queue
+    CACHE_DRIVER: z.enum(['memory', 'valkey', 'database']),
+    QUEUE_DRIVER: z.enum(['sync', 'valkey', 'database']),
+    VALKEY_URL: z.url(),
+    // Mail
+    MAIL_DRIVER: z.enum(['smtp', 'ses', 'resend', 'postmark', 'log']),
+    MAIL_HOST: z.string().min(1),
+    MAIL_PORT: z.coerce.number().int().min(1).max(65535),
+    MAIL_FROM_ADDRESS: z.email(),
+    MAIL_FROM_NAME: z.string().min(1),
+    // Auth
+    AUTH_SECRET: z.string().min(32, 'must be a long random secret (32+ characters)'),
+    AUTH_SESSION_DRIVER: z.enum(['database', 'valkey', 'jwt']),
+    AUTH_SESSION_LIFETIME: z.coerce.number().int().min(0),
+    AUTH_JWT_TTL: z.coerce.number().int().min(0),
+    AUTH_ALLOW_REGISTRATION: bool,
+    AUTH_MFA: z.enum(['off', 'optional', 'required']),
+    AUTH_GOOGLE_CLIENT_ID: optional(z.string().min(1)),
+    AUTH_GOOGLE_CLIENT_SECRET: optional(z.string().min(1)),
+    AUTH_GITHUB_CLIENT_ID: optional(z.string().min(1)),
+    AUTH_GITHUB_CLIENT_SECRET: optional(z.string().min(1)),
+    SEED_ADMIN_EMAIL: z.email(),
+    SEED_ADMIN_PASSWORD: z.string().min(32, 'must be a long random secret (32+ characters)'),
+    AUDIT_ENABLED: bool,
+    // Tenancy
+    TENANCY_ENABLED: bool,
+    TENANCY_STRATEGY: z.enum(['shared', 'schema', 'database']),
+    TENANCY_RESOLVE: list,
+    // HTTP / API
+    API_PREFIX: z.string().min(1),
+    API_VERSION: z.string().min(1),
+    API_DOCS: bool,
+    CORS_ORIGINS: list,
+    RATE_LIMIT: z.string().regex(/^\d+\/(s|min|h|day)$/, 'use a rate like 120/min'),
+  })
+  .superRefine((env, ctx) => {
+    if (env.APP_ENV === 'production' && env.APP_DEBUG) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['APP_DEBUG'],
+        message: 'APP_DEBUG must be false in production (it would expose error details)',
+      })
+    }
+  })
+
+/** The validated environment type. */
+export type Env = z.infer<typeof envSchema>
+
+===== env.ts =====
+/**
+ * The validated environment, loaded once at startup.
+ *
+ * A missing or invalid key stops the app with ONE message listing every problem and how to fix
+ * it (secret values are never printed). Read config through `config/*.ts`, not `process.env`.
+ */
+import { defineEnv } from '@strutvane/core'
+import { envSchema } from './env.schema.ts'
+
+export const env = defineEnv(envSchema)
+
+===== package.json =====
+{
+  "name": "acme-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "strutvane dev",
+    "build": "strutvane build",
+    "start": "strutvane start",
+    "test": "vitest run",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "services:up": "docker compose --env-file .env -f docker/compose.yaml up -d --wait",
+    "services:down": "docker compose --env-file .env -f docker/compose.yaml down",
+    "sv": "strutvane"
+  },
+  "dependencies": {
+    "@opentelemetry/sdk-node": "0.301.2",
+    "@strutvane/auth": "0.1.0-next.0",
+    "@strutvane/core": "0.1.0-next.0",
+    "@strutvane/framework": "0.1.0-next.0",
+    "@strutvane/logs": "0.1.0-next.0",
+    "bullmq": "6.7.6",
+    "iovalkey": "0.4.0",
+    "mysql2": "3.24.6",
+    "nodemailer": "10.5.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.7",
+    "@types/node": "24.19.2",
+    "strutvane": "0.1.0-next.0",
+    "typescript": "6.0.3",
+    "vitest": "5.1.0"
+  }
+}
+
+===== storage/.gitkeep =====
+
+===== storage/app/.gitkeep =====
+
+===== storage/logs/.gitkeep =====
+
+===== strutvane.config.ts =====
+/**
+ * Which Strutvane packages are active in this app, in boot order.
+ * `npm run sv -- add <package>` and `sv remove` edit the providers list for you.
+ */
+
+import authProvider from '@strutvane/auth/provider'
+import { defineConfig } from '@strutvane/core'
+import frameworkProvider from '@strutvane/framework/provider'
+import logsProvider from '@strutvane/logs/provider'
+import appProvider from './app/providers/app.provider.ts'
+
+export default defineConfig({
+  app: { name: 'acme-api', preset: 'api' },
+  providers: [frameworkProvider, logsProvider, authProvider, appProvider],
+})
+
+===== tests/feature/README.md =====
+# Feature tests
+
+`npm run sv -- make:model` generates a feature test per model: CRUD, validation, permissions
+(allowed and denied), tenant isolation and soft deletes. Add your own tests next to them.
+
+===== tests/unit/env.test.ts =====
+/**
+ * Guards the environment contract: a complete .env is accepted and a broken one is refused.
+ * Keep it passing when you add variables (add them to `valid` below).
+ */
+import { describe, expect, test } from 'vitest'
+import { envSchema } from '../../env.schema.ts'
+
+const valid = {
+  APP_NAME: 'acme-api',
+  APP_ENV: 'local',
+  APP_KEY: 'not-a-real-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+  APP_URL: 'http://localhost:3000',
+  APP_PORT: '3000',
+  APP_DEBUG: 'true',
+  APP_TIMEZONE: 'UTC',
+  APP_LOCALE: 'en',
+  LOG_LEVEL: 'info',
+  LOG_FORMAT: 'pretty',
+  LOGS_ENABLED: 'true',
+  LOGS_DRIVER: 'file',
+  LOGS_PATH: 'storage/logs',
+  LOGS_RETENTION_DAYS: '60',
+  LOGS_MAX_DAILY_SIZE: '30MB',
+  LOGS_REQUEST_BODIES: 'false',
+  LOGS_VIEWER: 'true',
+  LOGS_VIEWER_PATH: '/_strutvane/logs',
+  LOGS_VIEWER_TOKEN: '',
+  OTEL_ENABLED: 'false',
+  OTEL_SERVICE_NAME: 'acme-api-api',
+  OTEL_EXPORTER_OTLP_ENDPOINT: 'http://localhost:4318',
+  DB_CONNECTION: 'mysql',
+  DB_HOST: '127.0.0.1',
+  DB_PORT: '3306',
+  DB_DATABASE: 'acme_api',
+  DB_USERNAME: 'acme_api',
+  DB_PASSWORD: 'not-a-real-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+  DB_SSL: 'false',
+  DB_POOL_MIN: '0',
+  DB_POOL_MAX: '10',
+  CACHE_DRIVER: 'valkey',
+  QUEUE_DRIVER: 'valkey',
+  VALKEY_URL: 'redis://127.0.0.1:6379',
+  MAIL_DRIVER: 'smtp',
+  MAIL_HOST: '127.0.0.1',
+  MAIL_PORT: '1025',
+  MAIL_FROM_ADDRESS: 'no-reply@acme-api.test',
+  MAIL_FROM_NAME: 'acme-api',
+  AUTH_SECRET: 'not-a-real-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+  AUTH_SESSION_DRIVER: 'database',
+  AUTH_SESSION_LIFETIME: '120',
+  AUTH_JWT_TTL: '900',
+  AUTH_ALLOW_REGISTRATION: 'true',
+  AUTH_MFA: 'optional',
+  AUTH_GOOGLE_CLIENT_ID: '',
+  AUTH_GOOGLE_CLIENT_SECRET: '',
+  AUTH_GITHUB_CLIENT_ID: '',
+  AUTH_GITHUB_CLIENT_SECRET: '',
+  SEED_ADMIN_EMAIL: 'admin@acme-api.test',
+  SEED_ADMIN_PASSWORD: 'not-a-real-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+  AUDIT_ENABLED: 'true',
+  TENANCY_ENABLED: 'true',
+  TENANCY_STRATEGY: 'shared',
+  TENANCY_RESOLVE: 'subdomain,header,session',
+  API_PREFIX: '/api',
+  API_VERSION: 'v1',
+  API_DOCS: 'true',
+  CORS_ORIGINS: 'http://localhost:3000',
+  RATE_LIMIT: '120/min',
+}
+
+describe('environment', () => {
+  test('accepts a complete environment', () => {
+    expect(envSchema.safeParse(valid).success).toBe(true)
+  })
+
+  test('refuses a missing required key', () => {
+    const { APP_NAME: _removed, ...incomplete } = valid
+    expect(envSchema.safeParse(incomplete).success).toBe(false)
+  })
+
+  test('refuses debug mode in production', () => {
+    const result = envSchema.safeParse({ ...valid, APP_ENV: 'production', APP_DEBUG: 'true' })
+    expect(result.success).toBe(false)
+  })
+})
+
+===== tsconfig.json =====
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "moduleDetection": "force",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist", "coverage", "storage", "docker", ".strutvane"]
+}
+
+===== vitest.config.ts =====
+import { defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    include: ['tests/unit/**/*.test.ts', 'tests/feature/**/*.test.ts'],
+    environment: 'node',
+  },
+})

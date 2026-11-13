@@ -1,0 +1,77 @@
+{
+  "name": "create-strutvane",
+  "version": "0.1.0-next.0",
+  "description": "Start a new Strutvane project in one command: npm create strutvane@latest. Full-stack, API-only or UI-only presets with configs, .env/.env.example, local Docker services, tests and CI ready.",
+  "keywords": [
+    "strutvane",
+    "create",
+    "starter",
+    "scaffolding",
+    "typescript",
+    "fullstack",
+    "b2b"
+  ],
+  "homepage": "https://github.com/vishwajit-vm/create-strutvane#readme",
+  "bugs": {
+    "url": "https://github.com/vishwajit-vm/create-strutvane/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vishwajit-vm/create-strutvane.git"
+  },
+  "license": "MIT",
+  "author": "The Strutvane Authors",
+  "type": "module",
+  "sideEffects": false,
+  "bin": {
+    "create-strutvane": "./dist/cli.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@12.18.0",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "build": "tsdown",
+    "ci": "biome check . && tsc --noEmit && vitest run --coverage && tsdown",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "changeset publish"
+  },
+  "dependencies": {
+    "@clack/prompts": "1.9.0",
+    "@strutvane/contracts": "0.1.0-next.0",
+    "@strutvane/devkit": "0.1.0-next.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.7",
+    "@changesets/cli": "3.0.3",
+    "@strutvane/core": "0.1.0-next.0",
+    "@types/node": "24.19.2",
+    "@vitest/coverage-v8": "5.1.0",
+    "tsdown": "0.23.7",
+    "typescript": "6.0.3",
+    "vitest": "5.1.0",
+    "zod": "4.6.7"
+  }
+}

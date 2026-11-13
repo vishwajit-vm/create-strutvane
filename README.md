@@ -2,9 +2,9 @@
 
 # create-strutvane
 
-**Start a new Strutvane project in one command: npm create strutvane@latest. Presets for full-stack (API + UI + auth), API-only and UI-only, with configs, .env/.env.example, local Docker services, tests and CI ready.**
+**Start a new Strutvane project in one command. Full-stack, API-only or UI-only, with typed config, `.env` + `.env.example`, local Docker services, tests and CI. It passes `lint`, `typecheck` and `test` from the first minute.**
 
-[![Status: planning](https://img.shields.io/badge/status-planning-blueviolet)](https://github.com/vishwajit-vm/strutvane/blob/main/docs/14-roadmap.md)
+[![Status: pre-release](https://img.shields.io/badge/status-pre--release-orange)](https://github.com/vishwajit-vm/strutvane/blob/main/docs/14-roadmap.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Part of Strutvane](https://img.shields.io/badge/ecosystem-Strutvane-1f3a5f)](https://github.com/vishwajit-vm/strutvane)
@@ -12,33 +12,121 @@
 </div>
 
 > [!NOTE]
-> **create-strutvane is in the design phase.** The specification is written and implementation has not started. Nothing is published to npm yet, and the package name `create-strutvane` is reserved for this project. Follow [the roadmap](https://github.com/vishwajit-vm/strutvane/blob/main/docs/14-roadmap.md) for progress.
+> **Implemented, not released yet.** Version `0.1.0-next.0` is built and tested (Phase 1), but it is not on npm yet. The projects it generates depend on Strutvane packages that are still being built.
 
-## What it is
-
-create-strutvane is part of **[Strutvane](https://github.com/vishwajit-vm/strutvane)**, a TypeScript framework and package ecosystem for building enterprise B2B applications. You declare models as fields and types, and get migrations, a secured CRUD API, auth/RBAC/tenancy and a complete UI. Every line stays owned, overridable TypeScript.
-
-## Planned capabilities
-
-- Interactive prompts or flags: preset, database, auth methods, multi-tenancy, extras, package manager
-- **Presets**: `full` (framework + auth + ui), `api` (framework [+ auth]), `ui` (connect to any OpenAPI API)
-- Generates a **complete project**: `app/`, `config/`, `database/`, `web/`, `tests/`, documented `.env.example`, a local `.env` with generated secrets, and a seeded admin
-- **Local Docker services** (Postgres/MySQL, Valkey, Mailpit), git-ignored by default
-- Biome, TypeScript, Vitest and Playwright configs; GitHub Actions CI; a project README with every command
-- Templates are tested on every release: generate → typecheck → lint → test on Windows, macOS and Linux
-
-## A taste of the API (design preview)
-
-```bash
-npm create strutvane@latest acme -- --preset full --db postgres --auth email,google --tenancy shared --yes
-cd acme && pnpm sv up && pnpm dev
-```
-
-## Installation (once released)
+## Quick start
 
 ```bash
 npm create strutvane@latest
 ```
+
+It asks a few questions (what you're building, database, sign-in methods, extras) and writes the project. Every question also has a flag, so you can run it without any prompts:
+
+```bash
+npm create strutvane@latest acme -- --preset full --db postgres --auth email,google --tenancy --yes
+cd acme
+pnpm install
+pnpm services:up     # local Postgres in Docker
+pnpm sv migrate
+pnpm sv db:seed
+pnpm dev
+```
+
+## Presets
+
+| Preset | What you get |
+|---|---|
+| `full` (default) | REST API, database, auth and a generated React UI |
+| `api` | REST API, database and background work (no `web/`, no Playwright) |
+| `ui` | A UI for an **existing** API: screens come from its Strutvane manifest or its OpenAPI document (no `app/`, no database) |
+
+## What gets generated
+
+The layout follows the [developer experience spec, §3](https://github.com/vishwajit-vm/strutvane/blob/main/docs/05-developer-experience.md). Only what your choices need is created.
+
+```
+acme/
+├─ app/                 models, policies, services, routes, jobs, providers (README in every folder)
+├─ config/              typed settings that read the validated environment
+├─ database/            migrations (generated), seeders/database.seeder.ts, factories
+├─ web/                 Vite + React shell around @strutvane/ui     (full, ui)
+├─ tests/               unit (a real env test), feature, e2e        (e2e: full, ui)
+├─ storage/             logs and uploads                            (git-ignored)
+├─ docker/compose.yaml  local services only                         (git-ignored by default)
+├─ .strutvane/          generated state                             (git-ignored)
+├─ env.ts, env.schema.ts   every environment variable, validated with Zod at startup
+├─ .env                 your local values and generated secrets     (git-ignored)
+├─ .env.example         every key, documented, no secrets           (committed)
+├─ strutvane.config.ts  which Strutvane packages are active
+├─ package.json  tsconfig.json  biome.json  vitest.config.ts  playwright.config.ts
+├─ .gitignore  .gitattributes  .editorconfig  .github/workflows/ci.yml
+└─ README.md  CLAUDE.md
+```
+
+**Secrets.** `APP_KEY`, `AUTH_SECRET`, `DB_PASSWORD` and `SEED_ADMIN_PASSWORD` are generated (32 random bytes each) straight into `.env`. Only the first admin password is printed, once, because you need it to sign in. `.env.example` never contains a secret value.
+
+**Docker is local-only** ([ADR-0006](https://github.com/vishwajit-vm/strutvane/blob/main/docs/adr/0006-docker-local-only.md)). `docker/compose.yaml` runs Postgres or MySQL, Valkey and Mailpit as your choices need. It reads credentials from `.env` and binds every port to `127.0.0.1`. It is git-ignored unless you pass `--docker=commit`.
+
+## Options
+
+| Flag | Values | Default |
+|---|---|---|
+| `[folder]` | where to create the project; its name becomes the package name | asked |
+| `--name <name>` | package name, if it should differ from the folder | folder name |
+| `--preset <name>` | `full`, `api`, `ui` | `full` |
+| `--db`, `--database <name>` | `postgres`, `mysql`, `sqlite`, `azure-postgres`, `azure-mysql` | `postgres` |
+| `--auth <list>` / `--no-auth` | comma-separated: `email`, `magic-link`, `google`, `microsoft`, `github`, or `none` | `email` |
+| `--tenancy` / `--no-tenancy` | multi-tenancy, shared database (needs auth) | off |
+| `--extras <list>` / `--no-extras` | `queue`, `cache`, `mail`, `audit` (needs auth), `otel`, `logs`, or `none` | `logs` |
+| `--docker[=mode]` / `--no-docker` | `local` (git-ignored), `commit`, `off` | `local` when there is something to run |
+| `--pm <name>` | `pnpm`, `npm`, `yarn`, `bun` | the one you ran it with |
+| `--no-git` | skip `git init` and the first commit | git on |
+| `--install` | install dependencies afterwards | off |
+| `-y`, `--yes` | accept defaults for everything not given; never prompt | |
+| `--dry-run` | print the file tree and a full diff; write nothing | |
+
+When stdin is not a terminal (CI, pipes), nothing is asked; it behaves like `--yes`.
+
+## Safety guarantees
+
+- **Never overwrites.** The target folder must be missing or empty, and this is checked before any question is asked.
+- **All or nothing.** Files are written through [`@strutvane/devkit`](https://github.com/vishwajit-vm/strutvane-devkit)'s staged, transactional file system. If writing fails halfway, every file is rolled back and the folder is removed (or emptied again, if it existed).
+- **Cancel-safe.** Ctrl+C at any question exits with code `130` and nothing is created.
+- **Every problem at once.** Invalid flags are reported together, before any question (for example `--preset ui --db mysql` explains that a UI-only project has no database).
+- **Names that work everywhere.** Project names must be valid npm names and safe folder names on Windows (`con`, `nul` and friends are refused).
+- **Post steps never destroy work.** A failed `git commit` (no git identity) or `--install` becomes a warning that tells you which command to run.
+
+## Programmatic API
+
+```ts
+import { createProject, resolveOptions } from 'create-strutvane'
+
+const { options, warnings } = resolveOptions(
+  { name: 'acme', preset: 'api', database: 'sqlite' },
+  { cwd: process.cwd() },
+)
+const result = await createProject(options, { dryRun: true })
+console.log(result.tree)
+```
+
+`renderProject(options)` returns every file without touching the disk; `main(argv, deps)` is the whole CLI with an injectable UI, prompter and command runner.
+
+## Development
+
+```bash
+corepack pnpm@12.18.0 install
+corepack pnpm@12.18.0 run ci     # lint → typecheck → tests + coverage → build
+```
+
+The end-to-end tests generate real projects for seven option combinations and check each one with the real tools:
+
+- golden files (`test/__golden__/*.txt`; update with `vitest run -u` and review the diff)
+- `tsc` against the real `@strutvane/core` and Zod
+- Biome with the project's own config
+- the project's own Vitest suite
+- `git check-ignore` on the generated `.gitignore`
+
+Packages that aren't published yet (framework, auth, logs) are replaced by type stubs that cover only the surface the templates use. Dependency versions for generated projects live in [`src/versions.ts`](src/versions.ts).
 
 ## Works alone, better together
 
@@ -57,11 +145,11 @@ npm create strutvane@latest
 ## Documentation
 
 - **Package specification:** [05-developer-experience.md](https://github.com/vishwajit-vm/strutvane/blob/main/docs/05-developer-experience.md)
-- **Ecosystem blueprint:** [strutvane/docs](https://github.com/vishwajit-vm/strutvane/tree/main/docs), starting with the [executive summary](https://github.com/vishwajit-vm/strutvane/blob/main/docs/00-executive-summary.md) and the [developer experience](https://github.com/vishwajit-vm/strutvane/blob/main/docs/05-developer-experience.md)
+- **Ecosystem blueprint:** [strutvane/docs](https://github.com/vishwajit-vm/strutvane/tree/main/docs), starting with the [executive summary](https://github.com/vishwajit-vm/strutvane/blob/main/docs/00-executive-summary.md)
 
 ## Contributing
 
-Ideas and design feedback are welcome while the project is in the design phase. Open an issue or discussion, and see [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md). Every change ships with tests, docs and a changeset.
 
 ## Security
 
