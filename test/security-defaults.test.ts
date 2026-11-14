@@ -31,6 +31,29 @@ const at = (input: RawProjectInput) => optionsFor(input, resolve('/work'))
 const contentOf = (input: RawProjectInput, path: string) =>
   renderProject(at(input)).files.find((f) => f.path === path)?.content ?? ''
 
+/**
+ * The `roles: { … }` object literal from a config/auth.ts source, with line comments, whitespace
+ * and trailing commas removed, so two sources compare equal exactly when their grants are equal.
+ */
+const rolesBlock = (source: string): string => {
+  const start = source.indexOf('roles: {')
+  if (start < 0) return ''
+  let depth = 0
+  let end = start
+  for (let i = source.indexOf('{', start); i < source.length; i++) {
+    if (source[i] === '{') depth++
+    else if (source[i] === '}' && --depth === 0) {
+      end = i + 1
+      break
+    }
+  }
+  return source
+    .slice(start, end)
+    .replace(/\/\/[^\n]*/g, '')
+    .replace(/\s+/g, '')
+    .replace(/,([}\]])/g, '$1')
+}
+
 /** docs/07 §4.4, copied verbatim (the spec is the source of truth; change both together). */
 const SPEC_ROLES = {
   admin: ["'*'"],
@@ -101,10 +124,11 @@ describe('role map (docs/07 §4.4)', () => {
   test.skipIf(!existsSync(spec))('matches the excerpt in the hub spec', () => {
     const text = readFileSync(spec, 'utf8')
     const excerpt = text.slice(text.indexOf('// config/auth.ts (excerpt)'))
-    for (const role of ['admin', 'member', 'viewer'] as const) {
-      const m = new RegExp(`${role}:\\s*\\{ permissions: \\[(.*)\\] \\}`).exec(excerpt)
-      expect(m?.[1], role).toBe(SPEC_ROLES[role].join(', '))
-    }
+    // Compare the whole `roles: { … }` block, ignoring comments and layout, so the spec can stay
+    // readable (multi-line, annotated) while any change to an actual grant is still caught. The
+    // spec excerpt shows tenancy on and audit off.
+    const generated = contentOf({ name: 'a', tenancy: true }, 'config/auth.ts')
+    expect(rolesBlock(excerpt)).toBe(rolesBlock(generated))
     expect(excerpt).toContain(`newModelDefaults: '${NEW_MODEL_DEFAULTS}'`)
   })
 
