@@ -6,7 +6,7 @@
  * @module
  */
 import { readFileSync } from 'node:fs'
-import { main } from './main.ts'
+import { isCi, main } from './main.ts'
 
 const { npm_config_user_agent: userAgent } = process.env
 
@@ -19,4 +19,5 @@ process.exitCode = await main(process.argv.slice(2), {
   version: pkg.version,
   userAgent,
   interactive: process.stdin.isTTY === true && process.stdout.isTTY === true,
+  ci: isCi(process.env),
 })

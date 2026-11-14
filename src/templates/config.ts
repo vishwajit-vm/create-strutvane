@@ -6,8 +6,61 @@
  * @module
  */
 import type { GeneratedFile } from '@strutvane/devkit'
+import {
+  defaultRoles,
+  NEW_MODEL_DEFAULTS,
+  permissionSource,
+  WILDCARD_EXCLUDED_RESOURCES,
+} from '../auth-roles.ts'
 import { hasExtra, hasServer, hasWeb, type ProjectOptions } from '../options.ts'
-import { file, lines } from './util.ts'
+import { file, LINE_WIDTH, lines } from './util.ts'
+
+/**
+ * The `roles` block of `config/auth.ts` (docs/07 §4.4), plus the resources wildcards never match
+ * and what new models get. The data comes from `auth-roles.ts`, which a test pins to the spec.
+ */
+function roleMap(o: ProjectOptions): string[] {
+  const roles = Object.entries(defaultRoles(o)).flatMap(([name, role]) => {
+    const inline = `    ${name}: { permissions: [${role.permissions.map(permissionSource).join(', ')}] },`
+    // Exactly what Biome prints: one line when it fits, otherwise one permission per line.
+    return inline.length <= LINE_WIDTH
+      ? [inline]
+      : [
+          `    ${name}: {`,
+          '      permissions: [',
+          ...role.permissions.map((p) => `        ${permissionSource(p)},`),
+          '      ],',
+          '    },',
+        ]
+  })
+  const excluded = WILDCARD_EXCLUDED_RESOURCES.flatMap(([group, names]) => [
+    `    // ${group}`,
+    ...names.map((n) => `    '${n}',`),
+  ])
+  return [
+    '  /**',
+    '   * Default roles. Every model gets permissions like `invoice.viewAny`, `invoice.create`, …',
+    '   * (`*` patterns match every model). `own: true` limits a permission to records whose `ownerId`',
+    '   * is the signed-in user; a model without an `ownerId` field never matches it.',
+    '   * Access is decided by app/policies/*.policy.ts (deny-by-default): keep their role names in',
+    '   * line with these. Tenant admins can add custom roles later.',
+    '   */',
+    '  roles: {',
+    ...roles,
+    '  },',
+    '  /**',
+    '   * Identity, authorization, tenancy and audit records: no wildcard (not even admin `*`) ever',
+    '   * matches them. Grant access by exact name, e.g. `user.view`.',
+    '   */',
+    '  wildcardExclude: [',
+    ...excluded,
+    '  ],',
+    '  /** What a new model gets: the role patterns above, or `admin-only` for stricter orgs. */',
+    `  newModelDefaults: '${NEW_MODEL_DEFAULTS}' as const,`,
+    '  /** Roles a self-registered user gets (none: an admin grants them). */',
+    '  defaultRoles: [] as string[],',
+  ]
+}
 
 const header = (what: string) => [
   '/**',
@@ -122,15 +175,7 @@ function authConfig(o: ProjectOptions): GeneratedFile | undefined {
       social.length > 0 && '  social: {',
       ...social,
       social.length > 0 && '  },',
-      '  /**',
-      '   * Default roles. Every model gets permissions like `invoice.viewAny`, `invoice.create`, …',
-      '   * (synced automatically). Map them to roles here; tenant admins can add custom roles later.',
-      '   */',
-      '  roles: {',
-      "    admin: ['*'],",
-      "    member: ['*.viewAny', '*.view', '*.create', '*.update'],",
-      "    viewer: ['*.viewAny', '*.view'],",
-      '  },',
+      ...roleMap(o),
       "  seedAdmin: { email: env.SEED_ADMIN_EMAIL, password: env.SEED_ADMIN_PASSWORD, role: 'admin' },",
       hasExtra(o, 'audit') && '  audit: { enabled: env.AUDIT_ENABLED },',
       '})',

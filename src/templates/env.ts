@@ -85,13 +85,61 @@ export function zodFor(v: EnvSpecVar): {
   return { expr, helpers }
 }
 
+/**
+ * Cross-field safety checks for the generated schema, each emitted only when its keys exist:
+ * - `APP_DEBUG=true` is refused unless `APP_ENV=local` (debug output exposes error details, and
+ *   staging/test servers are reachable too; docs/12 §2 "I");
+ * - a `*` in `CORS_ORIGINS` is refused, because `config/cors.ts` allows credentials (cookies) and
+ *   a wildcard origin with credentials lets any site act as the signed-in user (docs/12 §10);
+ * - in production every CORS origin must be `https://`.
+ */
+export function envRefinements(keys: ReadonlySet<string>): readonly string[] {
+  const checks: string[] = []
+  if (keys.has('APP_DEBUG') && keys.has('APP_ENV')) {
+    checks.push(
+      "    if (env.APP_ENV !== 'local' && env.APP_DEBUG) {",
+      '      ctx.addIssue({',
+      "        code: 'custom',",
+      "        path: ['APP_DEBUG'],",
+      "        message: 'APP_DEBUG may only be true when APP_ENV=local (it would expose error details)',",
+      '      })',
+      '    }',
+    )
+  }
+  if (keys.has('CORS_ORIGINS')) {
+    checks.push(
+      '    // config/cors.ts allows credentials (cookies), so a wildcard origin is never safe.',
+      "    if (env.CORS_ORIGINS.some((origin) => origin.includes('*'))) {",
+      '      ctx.addIssue({',
+      "        code: 'custom',",
+      "        path: ['CORS_ORIGINS'],",
+      "        message: 'CORS_ORIGINS cannot contain * while credentials are allowed: list each origin',",
+      '      })',
+      '    }',
+    )
+    if (keys.has('APP_ENV')) {
+      checks.push(
+        "    const insecure = env.CORS_ORIGINS.some((origin) => !origin.startsWith('https://'))",
+        "    if (env.APP_ENV === 'production' && insecure) {",
+        '      ctx.addIssue({',
+        "        code: 'custom',",
+        "        path: ['CORS_ORIGINS'],",
+        "        message: 'every CORS_ORIGINS entry must start with https:// in production',",
+        '      })',
+        '    }',
+      )
+    }
+  }
+  return checks
+}
+
 /** The generated `env.schema.ts`. */
 export function envSchemaFile(sections: readonly EnvSection[]): GeneratedFile {
-  const keys = new Set(allEnvVars(sections).map((v) => v.key))
-  const productionGuard = keys.has('APP_DEBUG') && keys.has('APP_ENV')
+  const checks = envRefinements(new Set(allEnvVars(sections).map((v) => v.key)))
+  const refined = checks.length > 0
   // With a refinement the schema is a method chain (`z.object().superRefine()`, one call per
   // line); without one it is a single call. Either way the output is exactly what Biome prints.
-  const pad = productionGuard ? '    ' : '  '
+  const pad = refined ? '    ' : '  '
   const used = new Set<Helper>()
   const body: string[] = []
   for (const section of sections) {
@@ -117,23 +165,10 @@ export function envSchemaFile(sections: readonly EnvSection[]): GeneratedFile {
       "import { z } from 'zod'",
       '',
       ...helperCode,
-      productionGuard
-        ? 'export const envSchema = z\n  .object({'
-        : 'export const envSchema = z.object({',
+      refined ? 'export const envSchema = z\n  .object({' : 'export const envSchema = z.object({',
       ...body,
-      productionGuard ? '  })' : '})',
-      productionGuard &&
-        [
-          '  .superRefine((env, ctx) => {',
-          "    if (env.APP_ENV === 'production' && env.APP_DEBUG) {",
-          '      ctx.addIssue({',
-          "        code: 'custom',",
-          "        path: ['APP_DEBUG'],",
-          "        message: 'APP_DEBUG must be false in production (it would expose error details)',",
-          '      })',
-          '    }',
-          '  })',
-        ].join('\n'),
+      refined ? '  })' : '})',
+      refined && ['  .superRefine((env, ctx) => {', ...checks, '  })'].join('\n'),
       '',
       '/** The validated environment type. */',
       'export type Env = z.infer<typeof envSchema>',

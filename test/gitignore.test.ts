@@ -30,8 +30,10 @@ describe.each([
     '.env',
     '.env.local',
     '.env.production',
-    '.strutvane/README.md',
     '.strutvane/staging/journal.json',
+    '.strutvane/staging/tx-1/base/app/x.ts',
+    '.strutvane/registry.gen.ts',
+    '.strutvane/types.gen.ts',
     'storage/logs/app-2026-11-14.log',
     'storage/app/upload.pdf',
     'storage/database.sqlite',
@@ -52,6 +54,11 @@ describe.each([
     'database/migrations/0001_create_users.sql',
     'web/app.tsx',
     '.github/workflows/ci.yml',
+    // ADR-0012: the upgrade state is shared, so `sv upgrade` works for the whole team.
+    '.strutvane/README.md',
+    '.strutvane/lock.json',
+    '.strutvane/base/app/resources/invoice.resource.ts',
+    '.strutvane/templates/model.ts',
   ])('keeps %s', async (path) => {
     expect(await ignored(options.directory, path)).toBe(false)
   })
@@ -60,7 +67,7 @@ describe.each([
     expect(await ignored(options.directory, 'docker/compose.yaml')).toBe(dockerIgnored)
   })
 
-  test('the first commit contains .env.example but never .env, storage or .strutvane', async () => {
+  test('the first commit contains .env.example but never .env, storage or generated state', async () => {
     const dir = options.directory
     expect((await git(dir, 'add', '-A')).code).toBe(0)
     expect((await git(dir, 'commit', '-q', '-m', 'init')).code).toBe(0)
@@ -68,7 +75,8 @@ describe.each([
     expect(files).toContain('.env.example')
     expect(files).toContain('storage/.gitkeep')
     expect(files).not.toContain('.env')
-    expect(files.some((f) => f.startsWith('.strutvane/'))).toBe(false)
+    // Only the explanatory README of .strutvane/ exists at creation time.
+    expect(files.filter((f) => f.startsWith('.strutvane/'))).toEqual(['.strutvane/README.md'])
     expect(files.some((f) => f.startsWith('storage/logs'))).toBe(false)
     expect(files.includes('docker/compose.yaml')).toBe(!dockerIgnored)
   })

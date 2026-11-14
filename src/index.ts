@@ -23,7 +23,7 @@ export {
   SECRET_PLACEHOLDER,
   TargetNotEmptyError,
 } from './generate.ts'
-export { DEFAULT_NAME, type MainDeps, main, type Ui } from './main.ts'
+export { DEFAULT_NAME, isCi, type MainDeps, main, type Ui } from './main.ts'
 export {
   AUTH_METHODS,
   type AuthMethod,

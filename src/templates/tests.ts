@@ -16,6 +16,43 @@ function sampleValue(v: { readonly kind: string; readonly value?: string | undef
   return v.value ?? ''
 }
 
+/** Tests for each cross-field refusal in `env.schema.ts` (see `envRefinements`). */
+function refusalTests(keys: ReadonlySet<string>): string[] {
+  const out: string[] = []
+  if (keys.has('APP_DEBUG') && keys.has('APP_ENV')) {
+    out.push(
+      '',
+      "  test.each(['test', 'staging', 'production'])('refuses debug mode when APP_ENV=%s', (APP_ENV) => {",
+      "    expect(envSchema.safeParse({ ...valid, APP_ENV, APP_DEBUG: 'true' }).success).toBe(false)",
+      '  })',
+    )
+  }
+  if (keys.has('CORS_ORIGINS')) {
+    out.push(
+      '',
+      "  test.each(['*', 'https://*.example.com'])('refuses the CORS origin %s', (CORS_ORIGINS) => {",
+      '    expect(envSchema.safeParse({ ...valid, CORS_ORIGINS }).success).toBe(false)',
+      '  })',
+    )
+  }
+  if (keys.has('CORS_ORIGINS') && keys.has('APP_ENV')) {
+    const prod = keys.has('APP_DEBUG')
+      ? "{ ...valid, APP_ENV: 'production', APP_DEBUG: 'false' }"
+      : "{ ...valid, APP_ENV: 'production' }"
+    out.push(
+      '',
+      "  test('requires https:// CORS origins in production', () => {",
+      `    const production = ${prod}`,
+      "    const plain = { ...production, CORS_ORIGINS: 'http://app.example.com' }",
+      "    const secure = { ...production, CORS_ORIGINS: 'https://app.example.com' }",
+      '    expect(envSchema.safeParse(plain).success).toBe(false)',
+      '    expect(envSchema.safeParse(secure).success).toBe(true)',
+      '  })',
+    )
+  }
+  return out
+}
+
 /** Every file under `tests/`. */
 export function testFiles(o: ProjectOptions, env: readonly EnvSection[]): GeneratedFile[] {
   const vars = allEnvVars(env)
@@ -47,13 +84,7 @@ export function testFiles(o: ProjectOptions, env: readonly EnvSection[]): Genera
         firstRequired !== undefined &&
           '    expect(envSchema.safeParse(incomplete).success).toBe(false)',
         firstRequired !== undefined && '  })',
-        vars.some((v) => v.key === 'APP_DEBUG') && '',
-        vars.some((v) => v.key === 'APP_DEBUG') &&
-          "  test('refuses debug mode in production', () => {",
-        vars.some((v) => v.key === 'APP_DEBUG') &&
-          "    const result = envSchema.safeParse({ ...valid, APP_ENV: 'production', APP_DEBUG: 'true' })",
-        vars.some((v) => v.key === 'APP_DEBUG') && '    expect(result.success).toBe(false)',
-        vars.some((v) => v.key === 'APP_DEBUG') && '  })',
+        ...refusalTests(new Set(vars.map((v) => v.key))),
         '})',
       ),
     ),

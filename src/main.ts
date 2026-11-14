@@ -50,12 +50,27 @@ export interface MainDeps {
   readonly version: string
   /** `npm_config_user_agent`, to default the package manager to the one that ran us. */
   readonly userAgent?: string | undefined
-  /** False when stdin is not a terminal (CI, pipes): then nothing is asked. */
+  /** False when stdin or stdout is not a terminal (CI, pipes): then nothing is asked. */
   readonly interactive: boolean
+  /**
+   * True on a CI server (see {@link isCi}). CI logs are kept and often shared, so the first admin
+   * password is never printed there, even if the runner provides a terminal.
+   */
+  readonly ci?: boolean
   readonly ui?: Ui
   readonly prompter?: Prompter
   readonly run?: CommandRunner
   readonly generateSecret?: () => string
+}
+
+/**
+ * Whether the environment looks like a CI server: `CI` set to anything but empty, `0` or `false`
+ * (GitHub Actions, GitLab, CircleCI, Buildkite and most others), or `TF_BUILD` (Azure Pipelines).
+ */
+export function isCi(env: Readonly<Record<string, string | undefined>>): boolean {
+  const ci = env['CI']?.trim().toLowerCase()
+  if (ci !== undefined && ci !== '' && ci !== '0' && ci !== 'false') return true
+  return env['TF_BUILD'] !== undefined && env['TF_BUILD'] !== ''
 }
 
 /** Default project name for a non-interactive run without a folder. */
@@ -144,10 +159,18 @@ export async function main(argv: readonly string[], deps: MainDeps): Promise<num
       ui.info(`Generated secrets in .env (never committed): ${result.generatedSecrets.join(', ')}`)
     }
     if (result.showOnce.length > 0) {
-      ui.note(
-        `${result.showOnce.map((s) => `${s.key}=${s.value}`).join('\n')}\n\nShown once. It is also in .env; change it after your first sign-in.`,
-        'Your first admin sign-in',
-      )
+      // Print the password only to a person at a terminal: the output of `--yes`, piped and CI
+      // runs usually ends up in logs, which outlive the password and are read by others.
+      if (interactive && deps.ci !== true) {
+        ui.note(
+          `${result.showOnce.map((s) => `${s.key}=${s.value}`).join('\n')}\n\nShown once. It is also in .env; change it after your first sign-in.`,
+          'Your first admin sign-in',
+        )
+      } else {
+        ui.info(
+          `Your first admin sign-in: the password is ${result.showOnce.map((s) => s.key).join(', ')} in .env (not printed outside an interactive terminal). Change it after your first sign-in.`,
+        )
+      }
     }
     ui.note(nextSteps(options, deps.cwd, post.installed), 'Next steps')
     ui.outro('Happy building!')

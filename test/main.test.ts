@@ -5,7 +5,7 @@
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
-import { DEFAULT_NAME, type MainDeps, main, type Ui } from '../src/main.ts'
+import { DEFAULT_NAME, isCi, type MainDeps, main, type Ui } from '../src/main.ts'
 import type { CommandRunner } from '../src/post.ts'
 import { CANCEL, type Prompter } from '../src/prompts.ts'
 import { removeDir, secretSequence, tempDir } from './helpers.ts'
@@ -90,7 +90,7 @@ async function exists(path: string): Promise<boolean> {
 }
 
 describe('flags-only (non-interactive)', () => {
-  test('creates the project, commits it, and prints next steps and the admin password once', async () => {
+  test('creates the project, commits it, prints next steps, and points to .env for the admin password', async () => {
     const { cwd, ui, runner, deps } = await setup()
     const code = await main(['acme', '--preset', 'api', '--db', 'sqlite', '--yes'], deps)
     expect(code).toBe(0)
@@ -100,15 +100,16 @@ describe('flags-only (non-interactive)', () => {
     expect(ui.text('success')).toContain('first commit')
     expect(ui.text('info')).toContain('APP_KEY')
     const note = ui.text('note')
-    // sqlite + auth: APP_KEY, AUTH_SECRET, then SEED_ADMIN_PASSWORD (the third generated secret).
-    expect(note).toMatch(/Your first admin sign-in: SEED_ADMIN_PASSWORD=test-secret-03x+/)
+    // Not an interactive terminal: the password stays in .env and is never printed.
+    expect(ui.text('info')).toContain(
+      'Your first admin sign-in: the password is SEED_ADMIN_PASSWORD in .env',
+    )
     expect(note).toContain(
       'Next steps: cd acme\npnpm install\npnpm sv migrate\npnpm sv db:seed\npnpm dev',
     )
     expect(ui.text('outro')).toBe('Happy building!')
-    // The admin password appears in exactly one message; the other secrets in none.
-    expect(ui.out.filter((o) => o.text.includes('test-secret-03')).length).toBe(1)
-    expect(ui.out.some((o) => /test-secret-0[12]/.test(o.text))).toBe(false)
+    // No generated secret appears in any message.
+    expect(ui.out.some((o) => /test-secret-\d/.test(o.text))).toBe(false)
   })
 
   test('without a folder uses the default name', async () => {
@@ -189,6 +190,63 @@ describe('--dry-run', () => {
     expect(printed).toContain('+++ b/package.json')
     expect(printed).not.toMatch(/test-secret-\d/)
     expect(ui.text('outro')).toMatch(/Dry run: \d+ files would be created .* Nothing was written\./)
+  })
+})
+
+describe('first admin password', () => {
+  const flags = ['acme', '--preset', 'api', '--db', 'sqlite', '--no-git']
+  const printed = (out: { text: string }[]) =>
+    out.filter((o) => o.text.includes('test-secret-03')).length
+
+  test('an interactive terminal shows it exactly once (sqlite + auth: the third secret)', async () => {
+    const { ui, deps } = await setup({ interactive: true, prompter: scriptedPrompter([]).prompter })
+    expect(
+      await main(
+        [
+          ...flags,
+          '--auth',
+          'email',
+          '--no-tenancy',
+          '--extras',
+          'logs',
+          '--no-docker',
+          '--no-install',
+        ],
+        deps,
+      ),
+    ).toBe(0)
+    expect(ui.text('note')).toMatch(
+      /Your first admin sign-in: SEED_ADMIN_PASSWORD=test-secret-03x+/,
+    )
+    expect(printed(ui.out)).toBe(1)
+    expect(ui.out.some((o) => /test-secret-0[12]/.test(o.text))).toBe(false)
+  })
+
+  test.each([
+    ['--yes in a terminal', { interactive: true }, ['--yes']],
+    ['a CI server, even with a terminal', { interactive: true, ci: true }, ['--yes']],
+    ['no terminal (pipes)', { interactive: false }, []],
+  ] as const)('%s never prints it and points to .env', async (_name, extra, more) => {
+    const { ui, deps } = await setup({ ...extra })
+    expect(await main([...flags, ...more], deps)).toBe(0)
+    expect(printed(ui.out)).toBe(0)
+    expect(ui.text('info')).toContain('SEED_ADMIN_PASSWORD in .env')
+  })
+})
+
+describe('isCi', () => {
+  test.each([
+    [{ CI: 'true' }, true],
+    [{ CI: '1' }, true],
+    [{ CI: 'woodpecker' }, true],
+    [{ TF_BUILD: 'True' }, true],
+    [{ CI: 'false' }, false],
+    [{ CI: '0' }, false],
+    [{ CI: ' ' }, false],
+    [{ TF_BUILD: '' }, false],
+    [{}, false],
+  ])('%o → %s', (env, expected) => {
+    expect(isCi(env)).toBe(expected)
   })
 })
 

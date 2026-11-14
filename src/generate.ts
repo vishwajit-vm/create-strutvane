@@ -15,6 +15,7 @@
 import { mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createEnvEditor, createStagedFs, type DevkitIo, nodeIo } from '@strutvane/devkit'
+import { applyExampleValues } from './env-spec.ts'
 import type { ProjectOptions } from './options.ts'
 import { renderProject, renderTree } from './render.ts'
 
@@ -112,6 +113,11 @@ export async function createProject(
   try {
     for (const f of files) await fs.write(f.path, f.content)
     for (const section of env) await envEditor.ensure(section.title, section.vars)
+    // `.env.example` is committed and copied to staging/production: give it the safe defaults
+    // (e.g. APP_DEBUG=false) where they differ from the convenient local `.env` values.
+    const example = await fs.read('.env.example')
+    const safeExample = applyExampleValues(example, env)
+    if (safeExample !== example) await fs.write('.env.example', safeExample, { overwrite: true })
 
     const changes = await fs.changes()
     const paths = changes.map((c) => c.path)

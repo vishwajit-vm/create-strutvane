@@ -21,18 +21,26 @@ function cell(text: string): string {
   return text.replace(/\|/g, '\\|')
 }
 
-/** The "Environment variables" table, one row per key (secrets show no value). */
+/**
+ * The "Environment variables" table, one row per key. "Default" is the committed `.env.example`
+ * value (secrets show no value).
+ */
 export function envTable(sections: readonly EnvSection[]): string[] {
   const out = ['| Key | Default | What it does |', '|---|---|---|']
   for (const section of sections) {
     out.push(`| **${cell(section.title)}** | | |`)
     for (const v of section.vars) {
+      // The committed default (.env.example); a different local value is noted next to it.
+      const committed = v.example ?? v.value
       const shown =
         v.secret === true
           ? '_generated_'
-          : v.value === '' || v.value === undefined
+          : committed === '' || committed === undefined
             ? '_empty_'
-            : `\`${cell(v.value)}\``
+            : `\`${cell(committed)}\`` +
+              (v.example !== undefined && v.value !== undefined && v.value !== v.example
+                ? ` (local \`.env\`: \`${cell(v.value)}\`)`
+                : '')
       out.push(`| \`${v.key}\` | ${shown} | ${cell(v.comment)} |`)
     }
   }
@@ -110,10 +118,11 @@ function layout(o: ProjectOptions): string[] {
     )
   }
   rows.push(
-    '- `.strutvane/`' +
-      (hasServer(o) ? ', `storage/`' : '') +
-      ': generated and runtime files, git-ignored',
+    '- `.strutvane/`: generated files (registry, types, staging), git-ignored, except the upgrade' +
+      ' state `lock.json`, `base/` and `templates/`, which are committed so `sv upgrade` works for' +
+      ' the whole team',
   )
+  if (hasServer(o)) rows.push('- `storage/`: runtime files (logs, uploads), git-ignored')
   return rows
 }
 
@@ -192,7 +201,7 @@ export function claudeFile(o: ProjectOptions): GeneratedFile {
       hasServer(o) &&
         `- Generate code with \`${sv('make:*')}\` (model, policy, job, …) instead of writing boilerplate.`,
       '- Read settings through `config/*.ts`, never `process.env`. A new env key goes into `env.schema.ts`, `.env.example` and `.env`.',
-      '- Never commit `.env`, secrets, `storage/` or `.strutvane/`.' +
+      '- Never commit `.env`, secrets, `storage/` or generated `.strutvane/` files (only its `lock.json`, `base/` and `templates/` are committed).' +
         (o.docker === 'local' ? ' `docker/` is local-only and git-ignored.' : ''),
       hasServer(o) &&
         '- Log with the app logger, never `console.*`. Never log secrets or request bodies.',

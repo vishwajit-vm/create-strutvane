@@ -53,7 +53,7 @@ acme/
 ├─ tests/               unit (a real env test), feature, e2e        (e2e: full, ui)
 ├─ storage/             logs and uploads                            (git-ignored)
 ├─ docker/compose.yaml  local services only                         (git-ignored by default)
-├─ .strutvane/          generated state                             (git-ignored)
+├─ .strutvane/          generated state (git-ignored); upgrade state lock.json, base/, templates/ (committed)
 ├─ env.ts, env.schema.ts   every environment variable, validated with Zod at startup
 ├─ .env                 your local values and generated secrets     (git-ignored)
 ├─ .env.example         every key, documented, no secrets           (committed)
@@ -63,7 +63,9 @@ acme/
 └─ README.md  CLAUDE.md
 ```
 
-**Secrets.** `APP_KEY`, `AUTH_SECRET`, `DB_PASSWORD` and `SEED_ADMIN_PASSWORD` are generated (32 random bytes each) straight into `.env`. Only the first admin password is printed, once, because you need it to sign in. `.env.example` never contains a secret value.
+**Secrets.** `APP_KEY`, `AUTH_SECRET`, `DB_PASSWORD` and `SEED_ADMIN_PASSWORD` are generated (32 random bytes each) straight into `.env`. Only the first admin password is printed, once, and only in an interactive terminal session: with `--yes`, piped output or on a CI server (`CI` / `TF_BUILD` set) it is not printed, and the CLI points you to `SEED_ADMIN_PASSWORD` in `.env` instead. `.env.example` never contains a secret value.
+
+**Secure defaults.** `.env.example` (committed, the starting point for other environments) has `APP_DEBUG=false` and `API_DOCS=false`; your local `.env` turns both on. The generated `env.schema.ts` refuses to boot with `APP_DEBUG=true` unless `APP_ENV=local`, with a `*` in `CORS_ORIGINS` (the API allows credentials), and with non-`https://` CORS origins in production. Public sign-up is off (`AUTH_ALLOW_REGISTRATION=false`). `config/auth.ts` gets the default roles from the [auth spec §4.4](https://github.com/vishwajit-vm/strutvane/blob/main/docs/07-package-auth.md): `member` may update and delete only its own records (`own: true`, matched on `ownerId`), and identity, authorization, tenancy and audit records are never matched by wildcards. Requests are authorized by `app/policies/*.policy.ts` (deny-by-default).
 
 **Docker is local-only** ([ADR-0006](https://github.com/vishwajit-vm/strutvane/blob/main/docs/adr/0006-docker-local-only.md)). `docker/compose.yaml` runs Postgres or MySQL, Valkey and Mailpit as your choices need. It reads credentials from `.env` and binds every port to `127.0.0.1`. It is git-ignored unless you pass `--docker=commit`.
 

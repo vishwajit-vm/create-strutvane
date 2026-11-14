@@ -36,6 +36,12 @@ export interface EnvSpecVar extends EnvVar {
   readonly optional?: boolean
   /** One-line explanation, written above the key in both files and shown in the README. */
   readonly comment: string
+  /**
+   * The value committed in `.env.example` when it should differ from the local `.env` value:
+   * the safe default for any environment (e.g. `APP_DEBUG=false`), while `.env` keeps the
+   * convenient local one. Never used for secrets (those are always empty in `.env.example`).
+   */
+  readonly example?: string
 }
 
 /** A titled group of variables (one block in `.env` / `.env.example`). */
@@ -121,7 +127,10 @@ function application(o: ProjectOptions): EnvSection {
   )
   if (server) {
     vars.push(
-      flag('APP_DEBUG', true, 'Detailed error pages. Never true in production (boot refuses)'),
+      {
+        ...flag('APP_DEBUG', true, 'Detailed error pages. Only allowed with APP_ENV=local'),
+        example: 'false',
+      },
       str('APP_TIMEZONE', 'UTC', 'Timezone for dates and schedules'),
       str('APP_LOCALE', 'en', 'Default language for messages'),
     )
@@ -351,7 +360,11 @@ function auth(o: ProjectOptions): EnvSection | undefined {
       kind: 'integer',
       comment: 'Seconds an API access token is valid',
     },
-    flag('AUTH_ALLOW_REGISTRATION', true, 'Let new users sign up'),
+    flag(
+      'AUTH_ALLOW_REGISTRATION',
+      false,
+      'Let anyone create an account (public sign-up). Off: only accounts you create can sign in',
+    ),
     choice('AUTH_MFA', 'optional', ['off', 'optional', 'required'], 'Two-factor authentication'),
   ]
   if (o.auth.includes('google')) {
@@ -427,12 +440,20 @@ function http(o: ProjectOptions): EnvSection | undefined {
     vars: [
       str('API_PREFIX', '/api', 'Path prefix for the API'),
       str('API_VERSION', 'v1', 'Current API version'),
-      flag('API_DOCS', true, 'Serve interactive API docs at /docs and the spec at /openapi.json'),
+      {
+        ...flag(
+          'API_DOCS',
+          true,
+          'Serve interactive API docs at /docs and the spec at /openapi.json',
+        ),
+        example: 'false',
+      },
       {
         key: 'CORS_ORIGINS',
         value: 'http://localhost:3000',
         kind: 'list',
-        comment: 'Browser origins allowed to call the API (comma separated)',
+        comment:
+          'Browser origins allowed to call the API (comma separated; no *; https:// in production)',
       },
       { key: 'RATE_LIMIT', value: '120/min', kind: 'rate', comment: 'Requests allowed per client' },
     ],
@@ -474,6 +495,22 @@ export function buildEnvSpec(options: ProjectOptions): readonly EnvSection[] {
     http(options),
     ui(options),
   ].filter((s): s is EnvSection => s !== undefined)
+}
+
+/**
+ * Apply each variable's {@link EnvSpecVar.example} to `.env.example` text (replacing the value the
+ * env editor wrote, which is the local `.env` value). Other lines are left untouched.
+ */
+export function applyExampleValues(text: string, sections: readonly EnvSection[]): string {
+  const overrides = new Map(
+    allEnvVars(sections).flatMap((v) =>
+      v.example !== undefined && v.secret !== true ? [[v.key, v.example] as const] : [],
+    ),
+  )
+  return text.replace(/^([A-Z][A-Z0-9_]*)=.*$/gm, (line, key: string) => {
+    const value = overrides.get(key)
+    return value === undefined ? line : `${key}=${value}`
+  })
 }
 
 /** Every variable, flattened, in order. */

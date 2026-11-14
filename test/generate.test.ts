@@ -174,8 +174,11 @@ describe('createProject', () => {
     expect(result.files).toContain('.env')
     expect(result.tree).toContain('├─ app/')
     expect(result.diff).toContain('+++ b/package.json')
-    expect(result.diff).toContain(`APP_KEY=${SECRET_PLACEHOLDER}`)
+    // devkit redacts .env values in previews; the placeholder generator is a second safeguard.
+    expect(result.diff).toContain('+APP_KEY=<redacted>')
     expect(result.diff).not.toContain('REAL-SECRET')
+    expect(result.diff).not.toContain(SECRET_PLACEHOLDER)
+    expect(result.diff).toContain('+APP_DEBUG=false')
     expect(result.showOnce).toEqual([])
   })
 
