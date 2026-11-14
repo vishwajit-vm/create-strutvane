@@ -82,7 +82,22 @@ declare module '@strutvane/framework/http' {
   }
 }
 declare module '@strutvane/framework/database' {
-  export function defineSeeder(definition: { run(): Promise<void> }): unknown
+  // Mirrors packages/framework/src/runtime/seeders.ts (both overloads).
+  export interface SeedFactory {
+    createMany(target: SeederContext, count: number, overrides?: never, scope?: object): Promise<unknown[]>
+  }
+  export interface SeederContext {
+    readonly db: object
+    repository(model: object | string): object
+    create(factory: SeedFactory, count?: number, scope?: object): Promise<unknown[]>
+    call(seeder: Seeder): Promise<void>
+  }
+  export interface Seeder {
+    readonly name: string
+    run(context: SeederContext): Promise<void> | void
+  }
+  export function defineSeeder(name: string, run: Seeder['run']): Seeder
+  export function defineSeeder(seeder: { readonly name?: string; readonly run: Seeder['run'] }): Seeder
 }
 declare module '@strutvane/framework/provider' {
   const provider: object

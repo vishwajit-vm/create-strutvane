@@ -506,6 +506,56 @@ describe('util', () => {
   })
 })
 
+describe('database seeder and factories', () => {
+  // `sv make:model` (@strutvane/cli) edits this file by these anchors: keep it byte-for-byte.
+  const canonical = (command: string, auth: boolean) =>
+    [
+      '/**',
+      ` * Seeds the database (\`${command}\`). \`sv make:model\` registers each new model's seeder here,`,
+      ' * after the seeders of the models it belongs to.',
+      ...(auth
+        ? [' * The first admin user comes from SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD in .env.']
+        : []),
+      ' */',
+      "import { defineSeeder } from '@strutvane/framework/database'",
+      '',
+      "export default defineSeeder('DatabaseSeeder', async () => {",
+      '  // `sv make:model` adds `await call(…)` lines here, parents before children.',
+      '})',
+      '',
+    ].join('\n')
+  const seeder = (input: RawProjectInput) => contentOf(input, 'database/seeders/database.seeder.ts')
+
+  test('database.seeder.ts is the canonical string-form seeder', () => {
+    expect(seeder({ name: 'a' })).toBe(canonical('pnpm sv db:seed', true))
+    expect(seeder({ name: 'a', preset: 'api', auth: [], packageManager: 'npm' })).toBe(
+      canonical('npm run sv -- db:seed', false),
+    )
+  })
+
+  test('no seeder API shape or helper that is not in scope', () => {
+    const text = seeder({ name: 'a' })
+    expect(text).not.toContain('defineSeeder({')
+    expect(text).not.toMatch(/^\s*await call\(/m)
+    expect(pathsOf({ name: 'p', preset: 'ui' })).not.toContain(
+      'database/seeders/database.seeder.ts',
+    )
+  })
+
+  test('the factories README shows the real factory API and seeder order', () => {
+    const readme = contentOf({ name: 'a' }, 'database/factories/README.md')
+    expect(readme).toContain('export default defineFactory(Invoice, ({ fake, related }) => ({')
+    expect(readme).toContain("import { defineFactory } from '@strutvane/framework/testing'")
+    expect(readme).toContain(
+      "`related('Customer')` reuses an existing Customer when there is one and creates one otherwise.",
+    )
+    expect(readme).toContain('`await create(InvoiceFactory, 20)`')
+    expect(readme).toContain('parents before children')
+    // The old, non-existent API is gone.
+    expect(readme).not.toContain('factory(Invoice).count(')
+  })
+})
+
 describe('integration regressions (local e2e journey)', () => {
   test('the project-local CLI is a dev dependency, so the `strutvane` launcher never falls back to npx', () => {
     expect(devDependencies(at({ name: 'a' }))['@strutvane/cli']).toBe(STRUTVANE_VERSION)

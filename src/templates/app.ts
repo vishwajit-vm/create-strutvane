@@ -193,29 +193,53 @@ function databaseFiles(o: ProjectOptions): GeneratedFile[] {
       '- Never edit a migration that has already been applied: create a new one instead.',
       '- Renames are always asked, never guessed. Destructive changes need confirmation.',
     ]),
-    file(
-      'database/seeders/database.seeder.ts',
-      lines(
-        '/**',
-        ` * Seeds the database (\`${sv('db:seed')}\`). Call other seeders from here, in order.`,
-        o.auth.length > 0 &&
-          ' * The first admin user comes from SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD in .env.',
-        ' */',
-        "import { defineSeeder } from '@strutvane/framework/database'",
-        '',
-        'export default defineSeeder({',
-        '  async run() {',
-        '    // await call(InvoiceSeeder)',
-        '  },',
-        '})',
-      ),
-    ),
+    databaseSeeder(o),
     folderReadme('database/factories', 'Factories', [
-      'Fake-data builders for tests and seeders, generated with each model.',
+      `Fake-data builders for tests and seeders. \`${sv('make:model Invoice')}\` generates one per model:`,
       '',
-      'Example: `await factory(Invoice).count(20).create()`.',
+      '```ts',
+      "import { defineFactory } from '@strutvane/framework/testing'",
+      "import Invoice from '../../app/models/invoice.model.ts'",
+      '',
+      'export default defineFactory(Invoice, ({ fake, related }) => ({',
+      '  number: fake.words(2),',
+      "  customer: related('Customer'),",
+      '}))',
+      '```',
+      '',
+      "- `related('Customer')` reuses an existing Customer when there is one and creates one otherwise.",
+      '- In a seeder: `await create(InvoiceFactory, 20)`. In a test: `await InvoiceFactory.createMany(t, 3)`.',
+      `- \`${sv('make:model')}\` registers each model's seeder in \`database/seeders/database.seeder.ts\`,` +
+        ' parents before children, so related records exist before the records that point to them.',
     ]),
   ]
+}
+
+/**
+ * `database/seeders/database.seeder.ts`: the only file `sv db:seed` runs (without `--class`).
+ *
+ * The exact shape matters: `sv make:model` in `@strutvane/cli` edits this file, inserting
+ * `await call(…)` lines before the comment line and adding `call` to the callback's parameters, in
+ * dependency order (a model's parents first). `test/templates.test.ts` pins the content; change it
+ * only together with the CLI.
+ */
+export function databaseSeeder(o: ProjectOptions): GeneratedFile {
+  return file(
+    'database/seeders/database.seeder.ts',
+    lines(
+      '/**',
+      ` * Seeds the database (\`${svCommand(o.packageManager, 'db:seed')}\`). \`sv make:model\` registers each new model's seeder here,`,
+      ' * after the seeders of the models it belongs to.',
+      o.auth.length > 0 &&
+        ' * The first admin user comes from SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD in .env.',
+      ' */',
+      "import { defineSeeder } from '@strutvane/framework/database'",
+      '',
+      "export default defineSeeder('DatabaseSeeder', async () => {",
+      '  // `sv make:model` adds `await call(…)` lines here, parents before children.',
+      '})',
+    ),
+  )
 }
 
 /** `app/`, `database/` (server presets only) and `storage/` placeholders. */
