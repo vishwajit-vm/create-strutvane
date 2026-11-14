@@ -461,27 +461,17 @@ React to events. Create one with `npm run sv -- make:listener NotifyCustomer`.
 
 Email templates. Create one with `npm run sv -- make:mail InvoiceSent`.
 
-===== app/models/user.model.ts =====
-/**
- * Users. @strutvane/auth owns sign-in, sessions and roles; add your own profile fields here.
- * Changing fields? Run `sv migrate` and a migration is generated for you.
- */
-import { defineModel, field } from '@strutvane/framework'
+===== app/models/README.md =====
+# Models
 
-export default defineModel(
-  'User',
-  {
-    name: field.string().label('Full name').searchable(),
-    email: field.email().unique().searchable(),
-  },
-  {
-    timestamps: true,
-    softDeletes: true,
-    tenant: true,
-    audit: true,
-    title: 'name',
-  },
-)
+A model is the single source of truth for one kind of record: its fields and their types.
+From it, Strutvane generates the migration, the CRUD API, validation, permissions and UI pages.
+
+Create one with `npm run sv -- make:model Invoice number:string:unique amount:decimal(12,2)`, then run `npm run sv -- migrate`.
+
+Users are not a model here: accounts, sessions, roles and memberships belong to @strutvane/auth.
+A request knows its user as the actor (`actor.id`). For profile fields, add a model keyed by
+that id: `npm run sv -- make:model Profile userId:string:unique jobTitle:string`.
 
 ===== app/policies/README.md =====
 # Policies

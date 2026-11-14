@@ -6,14 +6,14 @@
  */
 import type { GeneratedFile } from '@strutvane/devkit'
 import type { EnvSection } from '../env-spec.ts'
-import { hasServer, hasWeb, type ProjectOptions } from '../options.ts'
+import { hasServer, hasWeb, type ProjectOptions, persistentIdentity } from '../options.ts'
 import { corepackRunner, installCommand, runScript, svCommand } from '../package-manager.ts'
 import { file, lines } from './util.ts'
 
 const PRESET_SUMMARY = {
   full: 'a full-stack Strutvane app: REST API, database and a generated React UI',
   api: 'a Strutvane API: database, a documented REST API and background work',
-  ui: 'a Strutvane UI for an existing API (screens generated from its manifest or OpenAPI document)',
+  ui: 'a Strutvane UI for an existing Strutvane API (screens generated from its manifest)',
 } as const
 
 /** Escape a value for a Markdown table cell. */
@@ -53,6 +53,8 @@ function quickStart(o: ProjectOptions): string[] {
   const steps = [installCommand(o.packageManager)]
   if (o.docker !== 'off')
     steps.push(`${run('services:up')}     # starts the local database and services (Docker)`)
+  if (persistentIdentity(o))
+    steps.push(`${sv('auth:migration')}     # writes the migration for the sign-in tables`)
   if (hasServer(o)) steps.push(`${sv('migrate')}`, `${sv('db:seed')}`)
   steps.push(`${run('dev')}`)
   const out = ['```bash', ...steps, '```']
@@ -232,7 +234,7 @@ export function claudeFile(o: ProjectOptions): GeneratedFile {
         o.auth.length > 0 &&
         `- Roles: \`admin\`, \`member\`, \`viewer\`${o.tenancy ? ", `owner` (a tenant's creator, inside that tenant)" : ''}. The role map in \`config/auth.ts\` grants on top of the policies; a policy \`deny\` always wins.`,
       hasWeb(o) &&
-        '- UI pages are generated from the API manifest. Override single pages in `web/pages/` rather than rewriting them.',
+        '- The UI is `<StrutvaneApp>` from @strutvane/ui, built from the API manifest. Add screens as routes in `web/router.tsx` and customise widgets, cells and messages with `overrides` in `web/app.tsx`; never copy the built-in pages.',
       '',
       '## Before you finish a change',
       '',

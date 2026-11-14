@@ -117,7 +117,8 @@ describe.each(COMBOS)('$id', ({ id, input }) => {
     },
   )
 
-  // Local workspace only: web/ against the real @strutvane/ui typings (published 0.1.0-next.0).
+  // Local workspace only: web/ against the real @strutvane/ui typings (the sibling ../ui/dist,
+  // which must contain the app shell: StrutvaneApp, RouteDefinition).
   test.skipIf(!existsSync(UI_TYPES))(
     'web/ type-checks against the real @strutvane/ui API',
     async () => {
@@ -125,16 +126,11 @@ describe.each(COMBOS)('$id', ({ id, input }) => {
       const result = await typecheckWeb(dir)
       expect(result.output).toBe('')
       expect(result.code).toBe(0)
-      // Negative control: the check has teeth (a prop the package does not have fails to compile).
+      // Negative control: the check has teeth (a misspelt prop, and the required apiUrl missing).
       const path = join(dir, 'web', 'app.tsx')
       const source = await readFile(path, 'utf8')
-      await writeFile(
-        path,
-        source.replace(
-          '<StrutvaneProvider api={api}',
-          '<StrutvaneProvider apiUrl="/api/v1" api={api}',
-        ),
-      )
+      expect(source).toContain('apiUrl={')
+      await writeFile(path, source.replace('apiUrl={', 'apiURL={'))
       try {
         expect((await typecheckWeb(dir)).code).not.toBe(0)
       } finally {

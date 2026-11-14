@@ -7,7 +7,7 @@
  * @module
  */
 import type { GeneratedFile } from '@strutvane/devkit'
-import { hasExtra, hasServer, hasWeb, type ProjectOptions } from '../options.ts'
+import { hasExtra, hasServer, hasWeb, type ProjectOptions, persistentIdentity } from '../options.ts'
 import { runScript } from '../package-manager.ts'
 import { STRUTVANE_VERSION, VERSIONS } from '../versions.ts'
 import { file, json, lines, sortKeys } from './util.ts'
@@ -28,9 +28,6 @@ const DRIVERS: Readonly<Record<string, readonly Dep[]>> = {
   sqlite: ['@libsql/client'],
 }
 
-/** Databases @strutvane/auth treats as PostgreSQL (persistent identity). */
-const POSTGRES: ReadonlySet<string> = new Set(['postgres', 'azure-postgres'])
-
 /** Runtime dependencies for the chosen options. */
 export function dependencies(o: ProjectOptions): Record<string, string> {
   const entries: [string, string][] = [['@strutvane/core', STRUTVANE_VERSION], ...pinned('zod')]
@@ -39,10 +36,9 @@ export function dependencies(o: ProjectOptions): Record<string, string> {
     if (hasExtra(o, 'logs')) entries.push(['@strutvane/logs', STRUTVANE_VERSION])
     if (o.auth.length > 0) entries.push(['@strutvane/auth', STRUTVANE_VERSION])
     entries.push(...pinned(...(DRIVERS[o.database ?? ''] ?? [])))
-    // On PostgreSQL, `session.driver: 'database'` (the generated AUTH_SESSION_DRIVER default) keeps
-    // accounts and sessions in the app's database through Better Auth, an optional peer of
-    // @strutvane/auth that it cannot install itself. Other databases keep identity in memory.
-    if (o.auth.length > 0 && POSTGRES.has(o.database ?? '')) entries.push(...pinned('better-auth'))
+    // Persistent identity runs on Better Auth, an optional peer of @strutvane/auth that it cannot
+    // install itself. Elsewhere auth keeps identity in memory and needs no extra package.
+    if (persistentIdentity(o)) entries.push(...pinned('better-auth'))
     if (hasExtra(o, 'cache') || hasExtra(o, 'queue')) entries.push(...pinned('iovalkey'))
     if (hasExtra(o, 'queue')) entries.push(...pinned('bullmq'))
     if (hasExtra(o, 'mail')) entries.push(...pinned('nodemailer'))

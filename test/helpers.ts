@@ -67,16 +67,7 @@ export async function generate(
  * Minimal type stubs for packages that are not published yet (framework, auth, logs) and for
  * browser tooling not installed in this repo (Playwright, Vite). Only the surface the templates use.
  */
-export const STUBS = `declare module '@strutvane/framework' {
-  interface FieldBuilder {
-    label(text: string): FieldBuilder
-    searchable(): FieldBuilder
-    unique(): FieldBuilder
-  }
-  export const field: { string(): FieldBuilder; email(): FieldBuilder }
-  export function defineModel(name: string, fields: Record<string, FieldBuilder>, options?: object): unknown
-}
-declare module '@strutvane/framework/http' {
+export const STUBS = `declare module '@strutvane/framework/http' {
   export const route: {
     get(path: string, definition: { public?: boolean; permission?: string; handler: () => unknown }): unknown
   }
@@ -196,9 +187,10 @@ export async function typecheckAuthConfig(dir: string): Promise<ToolResult> {
 }
 
 /**
- * The sibling `@strutvane/ui` checkout (local workspace layout only). Its `dist/` typings are the
- * ones published as 0.1.0-next.0, and its `node_modules` has the React, React DOM and TanStack
- * Query types the generated `web/` imports (this repo installs no browser packages).
+ * The sibling `@strutvane/ui` checkout (local workspace layout only). Its built `dist/` typings
+ * must include the app shell (`StrutvaneApp`, `RouteDefinition`: 0.1.0-next.1 and later; rebuild
+ * with `tsdown` in ../ui when they are missing), and its `node_modules` has the React and TanStack
+ * types the generated `web/` needs (this repo installs no browser packages).
  */
 export const UI_ROOT: string = join(PKG_ROOT, '..', 'ui')
 export const UI_TYPES: string = join(UI_ROOT, 'dist', 'react', 'index.d.mts')

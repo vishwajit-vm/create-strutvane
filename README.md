@@ -29,6 +29,7 @@ npm create strutvane@next acme -- --preset full --db postgres --auth email,googl
 cd acme
 pnpm install
 pnpm services:up     # local Postgres in Docker
+pnpm sv auth:migration   # sign-in tables (PostgreSQL with auth)
 pnpm sv migrate
 pnpm sv db:seed
 pnpm dev
@@ -40,7 +41,7 @@ pnpm dev
 |---|---|
 | `full` (default) | REST API, database, auth and a generated React UI |
 | `api` | REST API, database and background work (no `web/`, no Playwright) |
-| `ui` | A UI for an **existing** API: screens come from its Strutvane manifest or its OpenAPI document (no `app/`, no database) |
+| `ui` | A UI for an **existing** Strutvane API: screens come from its manifest (no `app/`, no database). Building screens from any OpenAPI document is planned in `@strutvane/ui` |
 
 ## What gets generated
 
@@ -51,7 +52,7 @@ acme/
 ├─ app/                 models, policies, services, routes, jobs, providers (README in every folder)
 ├─ config/              typed settings that read the validated environment
 ├─ database/            migrations (generated), seeders/database.seeder.ts, factories
-├─ web/                 Vite + React shell around @strutvane/ui     (full, ui)
+├─ web/                 Vite + React; app.tsx renders <StrutvaneApp> (full, ui)
 ├─ tests/               unit (a real env test), feature, e2e        (e2e: full, ui)
 ├─ storage/             logs and uploads                            (git-ignored)
 ├─ docker/compose.yaml  local services only                         (git-ignored by default)
@@ -73,6 +74,10 @@ acme/
 **`pnpm sv`** runs the project's own CLI (`strutvane-cli` from `@strutvane/cli` in devDependencies), so `pnpm sv help` lists the project's commands, including those of installed packages. A global `strutvane` launcher runs the same CLI for every command except `help`.
 
 **pnpm projects** get a `pnpm-workspace.yaml` (verified with pnpm 12.18.0). pnpm 12 stops `pnpm install` with `ERR_PNPM_IGNORED_BUILDS` when a dependency has a build script nobody approved, so the file approves exactly one: `allowBuilds: { esbuild: true }` (esbuild, used by Vite and the migration tooling, sets up its platform binary in a build step). It also lists `@strutvane/*` and `strutvane` in `minimumReleaseAgeExclude`: Strutvane pre-releases are staged and approved with 2FA ([ADR-0018](https://github.com/vishwajit-vm/strutvane/blob/main/docs/adr/0018-staged-npm-publishing.md)), and every third-party package keeps pnpm's "too new" protection. npm, Yarn and Bun need no equivalent: npm 11 and Yarn run build scripts, npm 12 only warns and esbuild still works through its platform package, and Bun trusts esbuild by default. The "Next steps" note and the generated README show the Corepack fallback, `corepack pnpm@12.18.0 <command>`, for machines without pnpm on the PATH.
+
+**The UI** is `<StrutvaneApp>` from `@strutvane/ui`: sign-in, a workspace switcher, a menu of every resource the user may see, and list, create, detail and edit pages, all from the API manifest. `web/router.tsx` adds your own screens (`RouteDefinition[]`), `web/theme/tokens.css` restyles it through `--sv-*` variables, and `overrides` in `web/app.tsx` replaces single widgets, cells or messages. Without auth the shell gets `auth={false}`; the ui preset sends cookies to the other origin (`credentials="include"`). This needs the `@strutvane/ui` release after 0.1.0-next.0 (the pin in `src/versions.ts` is bumped before release).
+
+**Users** are not an app model: accounts, sessions, roles and memberships belong to `@strutvane/auth`, and a request knows its user as the actor. `app/models/README.md` shows a profile model keyed by `userId` for your own user fields. On PostgreSQL with auth (and the default `AUTH_SESSION_DRIVER=database`), auth keeps them in the app's database through Better Auth: the project depends on `better-auth`, and `sv auth:migration` writes the migration for those tables before the first `sv migrate` (Next steps, the README and `database/migrations/README.md` say so). Other databases keep sign-in in memory for now.
 
 **Docker is local-only** ([ADR-0006](https://github.com/vishwajit-vm/strutvane/blob/main/docs/adr/0006-docker-local-only.md)). `docker/compose.yaml` runs Postgres or MySQL, Valkey and Mailpit as your choices need. It reads credentials from `.env` and binds every port to `127.0.0.1`. It is git-ignored unless you pass `--docker=commit`.
 

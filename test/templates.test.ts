@@ -6,7 +6,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { allEnvVars, buildEnvSpec, sqlIdentifier } from '../src/env-spec.ts'
-import type { RawProjectInput } from '../src/options.ts'
+import {
+  AUTH_SESSION_DRIVER_DEFAULT,
+  persistentIdentity,
+  type RawProjectInput,
+} from '../src/options.ts'
 import { ciInstallCommand, installCommand, runScript, svCommand } from '../src/package-manager.ts'
 import { renderProject, renderTree } from '../src/render.ts'
 import { providerSpecifiers, strutvaneConfigFile } from '../src/templates/app.ts'
@@ -29,7 +33,7 @@ describe('layout (docs/05 §3.1)', () => {
     for (const p of [
       'app/http/routes/api.ts',
       'app/providers/app.provider.ts',
-      'app/models/user.model.ts',
+      'app/models/README.md',
       'app/policies/README.md',
       'app/jobs/README.md',
       'config/app.ts',
@@ -89,7 +93,8 @@ describe('layout (docs/05 §3.1)', () => {
     ).toBe(false)
     expect(paths).not.toContain('config/database.ts')
     expect(paths).toContain('config/api-client.ts')
-    expect(paths).toContain('web/ui.resources.ts')
+    // @strutvane/ui reads the Strutvane manifest only; there is no OpenAPI resource file to tune.
+    expect(paths).not.toContain('web/ui.resources.ts')
     expect(paths).not.toContain('docker/compose.yaml')
   })
 
@@ -578,6 +583,113 @@ describe('persistent identity (auth on PostgreSQL)', () => {
       expect(pkg.peerDependencies?.['better-auth']).toBe(VERSIONS['better-auth'])
     },
   )
+})
+
+describe('web app shell (@strutvane/ui StrutvaneApp)', () => {
+  const app = (input: RawProjectInput) => contentOf(input, 'web/app.tsx')
+
+  test('full preset with auth: the shell with the env API URL, app name and routes', () => {
+    const text = app({ name: 'a' })
+    expect(text).toContain("import { StrutvaneApp } from '@strutvane/ui/react'")
+    expect(text).toContain("import { routes } from './router.tsx'")
+    expect(text).toContain(
+      [
+        '    <StrutvaneApp',
+        '      apiUrl={import.meta.env.VITE_API_URL}',
+        '      appName={import.meta.env.VITE_APP_NAME}',
+        '      routes={routes}',
+        '    />',
+      ].join('\n'),
+    )
+    expect(text).not.toContain('auth={false}')
+    expect(text).not.toContain('credentials=')
+  })
+
+  test('full preset without auth turns the session endpoints off', () => {
+    const text = app({ name: 'a', auth: [] })
+    expect(text).toContain('      auth={false}\n')
+    expect(text).not.toContain('credentials=')
+  })
+
+  test('ui preset talks to another origin with cookies and keeps sign-in on', () => {
+    const text = app({ name: 'p', preset: 'ui' })
+    expect(text).toContain('      credentials="include"\n')
+    expect(text).not.toContain('auth={false}')
+  })
+
+  test('router.tsx exports RouteDefinition[]; the env has both VITE_ keys the shell reads', () => {
+    expect(contentOf({ name: 'a' }, 'web/router.tsx')).toContain(
+      "import type { RouteDefinition } from '@strutvane/ui/react'\n\nexport const routes: RouteDefinition[] = []\n",
+    )
+    for (const input of [{ name: 'a' }, { name: 'p', preset: 'ui' as const }]) {
+      const keys = allEnvVars(buildEnvSpec(at(input))).map((v) => v.key)
+      expect(keys).toEqual(expect.arrayContaining(['VITE_API_URL', 'VITE_APP_NAME']))
+    }
+  })
+
+  test('the theme uses the variables the shell styles with, and outranks its defaults', () => {
+    const css = contentOf({ name: 'a' }, 'web/theme/tokens.css')
+    expect(css).toContain('html:root {')
+    expect(css).toContain('--sv-radius:')
+    expect(css).not.toContain('--sv-color-')
+    expect(css).not.toContain('.sv-shell')
+  })
+
+  test('web READMEs name only commands and props that exist', () => {
+    const all = ['pages', 'components/ui', 'layouts', 'dashboard']
+      .map((d) => contentOf({ name: 'a' }, `web/${d}/README.md`))
+      .join('\n')
+    expect(all).not.toMatch(/eject|ui:add/)
+    expect(all).toContain('web/router.tsx')
+    expect(all).toContain('overrides')
+    expect(all).toContain('home={<Dashboard />}')
+  })
+})
+
+describe('no User model (accounts belong to @strutvane/auth)', () => {
+  test('no app/models/user.model.ts in any preset; the models README explains the actor link', () => {
+    for (const input of [
+      { name: 'a' },
+      { name: 'a', tenancy: true },
+      { name: 'a', preset: 'api' as const },
+    ]) {
+      expect(pathsOf(input)).not.toContain('app/models/user.model.ts')
+    }
+    const readme = contentOf({ name: 'a' }, 'app/models/README.md')
+    expect(readme).toContain('`actor.id`')
+    expect(readme).toContain('pnpm sv make:model Profile userId:string:unique jobTitle:string')
+    expect(contentOf({ name: 'a', auth: [] }, 'app/models/README.md')).not.toContain('actor')
+  })
+})
+
+describe('auth:migration (persistent identity on PostgreSQL)', () => {
+  test('persistentIdentity: auth + postgres family + the database session driver', () => {
+    expect(persistentIdentity(at({ name: 'a' }))).toBe(true)
+    expect(persistentIdentity(at({ name: 'a', database: 'azure-postgres' }))).toBe(true)
+    expect(AUTH_SESSION_DRIVER_DEFAULT).toBe('database')
+    expect(persistentIdentity(at({ name: 'a', auth: [] }))).toBe(false)
+    for (const database of ['mysql', 'azure-mysql', 'sqlite'] as const) {
+      expect(persistentIdentity(at({ name: 'a', database }))).toBe(false)
+    }
+    expect(persistentIdentity(at({ name: 'p', preset: 'ui' }))).toBe(false)
+  })
+
+  test('README quick start and migrations README run it before migrate, in the pm form', () => {
+    const readme = contentOf({ name: 'a', packageManager: 'npm' }, 'README.md')
+    const auth = readme.indexOf('npm run sv -- auth:migration')
+    expect(auth).toBeGreaterThan(-1)
+    expect(auth).toBeLessThan(readme.indexOf('npm run sv -- migrate'))
+    expect(contentOf({ name: 'a' }, 'database/migrations/README.md')).toContain(
+      '`pnpm sv auth:migration` writes their migration here',
+    )
+    for (const input of [
+      { name: 'a', database: 'sqlite' as const },
+      { name: 'a', auth: [] },
+    ]) {
+      expect(contentOf(input, 'README.md')).not.toContain('auth:migration')
+      expect(contentOf(input, 'database/migrations/README.md')).not.toContain('auth:migration')
+    }
+  })
 })
 
 describe('integration regressions (local e2e journey)', () => {

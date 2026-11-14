@@ -11,7 +11,13 @@
  * @module
  */
 import type { EnvVar } from '@strutvane/contracts'
-import { hasExtra, hasServer, hasWeb, type ProjectOptions } from './options.ts'
+import {
+  AUTH_SESSION_DRIVER_DEFAULT,
+  hasExtra,
+  hasServer,
+  hasWeb,
+  type ProjectOptions,
+} from './options.ts'
 
 /** How a value is validated in the generated `env.schema.ts`. */
 export type EnvKind =
@@ -351,7 +357,7 @@ function auth(o: ProjectOptions): EnvSection | undefined {
     },
     choice(
       'AUTH_SESSION_DRIVER',
-      'database',
+      AUTH_SESSION_DRIVER_DEFAULT,
       ['database', 'valkey', 'jwt'],
       'Where sessions are stored',
     ),

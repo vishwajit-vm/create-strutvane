@@ -134,6 +134,31 @@ export function hasWeb(options: { readonly preset: string }): boolean {
   return options.preset !== 'api'
 }
 
+/** The `AUTH_SESSION_DRIVER` default written to `.env` / `.env.example` (docs/07 §2.3). */
+export const AUTH_SESSION_DRIVER_DEFAULT = 'database'
+
+/** Databases `@strutvane/auth` treats as PostgreSQL. */
+const POSTGRES_DATABASES: ReadonlySet<string> = new Set(['postgres', 'azure-postgres'])
+
+/**
+ * Does `@strutvane/auth` keep accounts and sessions in the app's own database? Only with auth on,
+ * PostgreSQL (`postgres` / `azure-postgres`) and `session.driver: 'database'` (the generated
+ * default). Then the app needs `better-auth` and the auth tables (`sv auth:migration`, then
+ * `sv migrate`). Anywhere else auth uses its in-memory engine and warns at boot.
+ */
+export function persistentIdentity(options: {
+  readonly preset: string
+  readonly auth: readonly string[]
+  readonly database: string | undefined
+}): boolean {
+  return (
+    hasServer(options) &&
+    options.auth.length > 0 &&
+    POSTGRES_DATABASES.has(options.database ?? '') &&
+    AUTH_SESSION_DRIVER_DEFAULT === 'database'
+  )
+}
+
 /** Is a given extra enabled? */
 export function hasExtra(options: { readonly extras: readonly string[] }, extra: Extra): boolean {
   return options.extras.includes(extra)

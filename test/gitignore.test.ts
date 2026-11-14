@@ -50,7 +50,7 @@ describe.each([
     'storage/.gitkeep',
     'package.json',
     'env.ts',
-    'app/models/user.model.ts',
+    'app/models/invoice.model.ts',
     'database/migrations/0001_create_users.sql',
     'web/app.tsx',
     '.github/workflows/ci.yml',

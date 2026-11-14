@@ -8,7 +8,16 @@
  * @module
  */
 
-/** Version of every `@strutvane/*` package and the `strutvane` CLI on the current train. */
+/**
+ * Version of every `@strutvane/*` package and the `strutvane` CLI on the current train.
+ *
+ * Release requirement: the templates now need the NEXT train (0.1.0-next.1 or later). Do not
+ * release create-strutvane before this pin is bumped to a train that contains:
+ * - `@strutvane/ui` with the app shell: `StrutvaneApp` and `RouteDefinition` (web/app.tsx,
+ *   web/router.tsx). 0.1.0-next.0 has neither;
+ * - `@strutvane/auth` with persistent identity and `sv auth:migration` (Next steps, README and
+ *   database/migrations/README.md on PostgreSQL). 0.1.0-next.0 keeps identity in memory.
+ */
 export const STRUTVANE_VERSION = '0.1.0-next.0'
 
 /** Third-party versions (re-verified 2026-11-14). */

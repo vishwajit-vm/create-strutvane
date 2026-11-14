@@ -27,6 +27,11 @@ export const COMBOS: readonly Combo[] = [
   },
   { id: 'ui-yarn', input: { name: 'acme-portal', preset: 'ui', packageManager: 'yarn' } },
   {
+    // The full preset without sign-in: the UI shell runs with auth={false}.
+    id: 'full-sqlite-noauth',
+    input: { name: 'kiosk', database: 'sqlite', auth: [], extras: [], docker: 'off' },
+  },
+  {
     id: 'api-sqlite-noauth-bun',
     input: {
       name: 'tiny',

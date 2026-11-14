@@ -41,12 +41,28 @@ describe('steps', () => {
       'cd acme',
       'pnpm install',
       'pnpm services:up',
+      // Postgres + auth + database sessions: auth's tables first (the app refuses to boot without).
+      'pnpm sv auth:migration',
       'pnpm sv migrate',
       'pnpm sv db:seed',
       'pnpm dev',
       '',
       `pnpm not installed? use: corepack pnpm@${VERSIONS.pnpm} <command>`,
     ])
+  })
+
+  test('auth:migration only with persistent identity, in the package manager form', () => {
+    const at = (input: RawProjectInput) => steps({ directory: join(cwd, 'acme'), ...input })
+    expect(at({ name: 'acme', packageManager: 'npm' })).toContain('npm run sv -- auth:migration')
+    expect(at({ name: 'acme', database: 'azure-postgres' })).toContain('pnpm sv auth:migration')
+    for (const input of [
+      { name: 'acme', database: 'sqlite' as const },
+      { name: 'acme', database: 'mysql' as const },
+      { name: 'acme', auth: [] },
+      { name: 'acme', preset: 'ui' as const },
+    ]) {
+      expect(at(input).join('\n')).not.toContain('auth:migration')
+    }
   })
 
   test('installed dependencies skip the install step', () => {

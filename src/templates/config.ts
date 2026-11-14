@@ -362,7 +362,7 @@ function uiConfig(o: ProjectOptions): GeneratedFile[] {
         'config/api-client.ts',
         lines(
           ...header(
-            'The existing API this UI connects to. With a Strutvane backend the UI reads its manifest; with any other OpenAPI 3.x API it infers resources (override them in web/ui.resources.ts).',
+            'The existing API this UI connects to. The UI reads its Strutvane manifest (/.well-known/strutvane.json on the API origin); building screens from any OpenAPI 3.x document is planned in @strutvane/ui.',
           ),
           'export default defineConfig({',
           '  baseUrl: env.VITE_API_URL,',
