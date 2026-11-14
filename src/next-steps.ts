@@ -18,8 +18,8 @@ function shellPath(path: string): string {
  *
  * - `cd <folder>` only when the project is not the current folder (`cd .` would be noise).
  * - The install step only when dependencies were not installed already.
- * - `sv auth:migration` before `sv migrate` when auth keeps identity in the app's PostgreSQL
- *   database ({@link persistentIdentity}): the app refuses to boot until those tables exist.
+ * - `sv migrate` also creates the auth tables when auth keeps identity in the app's PostgreSQL
+ *   ({@link persistentIdentity}): @strutvane/auth ships them as a package migration.
  * - For pnpm, a last line with the Corepack fallback: the generated `packageManager` field pins a
  *   pnpm version, and people who ran `npm create` often have no `pnpm` on their PATH.
  *
@@ -34,7 +34,6 @@ export function nextSteps(options: ProjectOptions, cwd: string, installed: boole
   if (folder !== '') steps.push(`cd ${shellPath(folder)}`)
   if (!installed) steps.push(installCommand(pm))
   if (options.docker !== 'off') steps.push(run('services:up'))
-  if (persistentIdentity(options)) steps.push(svCommand(pm, 'auth:migration'))
   if (hasServer(options)) steps.push(svCommand(pm, 'migrate'), svCommand(pm, 'db:seed'))
   steps.push(run('dev'))
   const corepack = corepackRunner(pm)

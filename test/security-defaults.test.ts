@@ -21,7 +21,11 @@ import {
   ROLE_NAMES,
 } from '../src/auth-roles.ts'
 import { applyExampleValues, buildEnvSpec } from '../src/env-spec.ts'
-import type { RawProjectInput } from '../src/options.ts'
+import {
+  AUTH_SESSION_DRIVER_DEFAULT,
+  AUTH_SESSION_DRIVERS,
+  type RawProjectInput,
+} from '../src/options.ts'
 import { renderProject } from '../src/render.ts'
 import { envRefinements } from '../src/templates/env.ts'
 import { gitignore } from '../src/templates/root.ts'
@@ -265,6 +269,16 @@ describe('env.schema.ts refusals (executed with the real Zod)', () => {
 
   test('the local defaults are valid', () => {
     expect(ok({})).toBe(true)
+  })
+
+  test('AUTH_SESSION_DRIVER accepts exactly the drivers @strutvane/auth implements', () => {
+    expect('AUTH_SESSION_DRIVER' in valid).toBe(true)
+    for (const driver of AUTH_SESSION_DRIVERS)
+      expect(ok({ AUTH_SESSION_DRIVER: driver }), driver).toBe(true)
+    // Not built in auth yet (it would silently fall back to memory): refused at boot instead.
+    for (const driver of ['valkey', 'jwt', 'redis', '', 'DATABASE'])
+      expect(ok({ AUTH_SESSION_DRIVER: driver }), driver).toBe(false)
+    expect(AUTH_SESSION_DRIVERS).toContain(AUTH_SESSION_DRIVER_DEFAULT)
   })
 
   test('TRUST_PROXY must be a non-negative whole number of hops', () => {

@@ -6,7 +6,7 @@
  */
 import type { GeneratedFile } from '@strutvane/devkit'
 import type { EnvSection } from '../env-spec.ts'
-import { hasServer, hasWeb, type ProjectOptions, persistentIdentity } from '../options.ts'
+import { hasServer, hasWeb, type ProjectOptions } from '../options.ts'
 import { corepackRunner, installCommand, runScript, svCommand } from '../package-manager.ts'
 import { file, lines } from './util.ts'
 
@@ -53,8 +53,6 @@ function quickStart(o: ProjectOptions): string[] {
   const steps = [installCommand(o.packageManager)]
   if (o.docker !== 'off')
     steps.push(`${run('services:up')}     # starts the local database and services (Docker)`)
-  if (persistentIdentity(o))
-    steps.push(`${sv('auth:migration')}     # writes the migration for the sign-in tables`)
   if (hasServer(o)) steps.push(`${sv('migrate')}`, `${sv('db:seed')}`)
   steps.push(`${run('dev')}`)
   const out = ['```bash', ...steps, '```']

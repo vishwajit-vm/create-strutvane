@@ -41,8 +41,7 @@ describe('steps', () => {
       'cd acme',
       'pnpm install',
       'pnpm services:up',
-      // Postgres + auth + database sessions: auth's tables first (the app refuses to boot without).
-      'pnpm sv auth:migration',
+      // sv migrate also creates auth's tables (a package migration of @strutvane/auth).
       'pnpm sv migrate',
       'pnpm sv db:seed',
       'pnpm dev',
@@ -51,11 +50,11 @@ describe('steps', () => {
     ])
   })
 
-  test('auth:migration only with persistent identity, in the package manager form', () => {
+  test('no separate auth:migration step: sv migrate applies the auth tables', () => {
     const at = (input: RawProjectInput) => steps({ directory: join(cwd, 'acme'), ...input })
-    expect(at({ name: 'acme', packageManager: 'npm' })).toContain('npm run sv -- auth:migration')
-    expect(at({ name: 'acme', database: 'azure-postgres' })).toContain('pnpm sv auth:migration')
     for (const input of [
+      { name: 'acme', packageManager: 'npm' as const },
+      { name: 'acme', database: 'azure-postgres' as const },
       { name: 'acme', database: 'sqlite' as const },
       { name: 'acme', database: 'mysql' as const },
       { name: 'acme', auth: [] },

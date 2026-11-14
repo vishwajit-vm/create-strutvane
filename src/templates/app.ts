@@ -176,7 +176,7 @@ function databaseFiles(o: ProjectOptions): GeneratedFile[] {
       '- Never edit a migration that has already been applied: create a new one instead.',
       ...(persistentIdentity(o)
         ? [
-            `- Sign-in tables (accounts, sessions, tenants, memberships) belong to @strutvane/auth: \`${sv('auth:migration')}\` writes their migration here (only what is missing), then \`${sv('migrate')}\` applies it.`,
+            `- Sign-in tables (accounts, sessions, tenants, memberships) ship with @strutvane/auth: \`${sv('migrate')}\` applies them together with these files.`,
           ]
         : []),
       '- Renames are always asked, never guessed. Destructive changes need confirmation.',

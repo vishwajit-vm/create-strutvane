@@ -13,6 +13,7 @@
 import type { EnvVar } from '@strutvane/contracts'
 import {
   AUTH_SESSION_DRIVER_DEFAULT,
+  AUTH_SESSION_DRIVERS,
   hasExtra,
   hasServer,
   hasWeb,
@@ -358,8 +359,8 @@ function auth(o: ProjectOptions): EnvSection | undefined {
     choice(
       'AUTH_SESSION_DRIVER',
       AUTH_SESSION_DRIVER_DEFAULT,
-      ['database', 'valkey', 'jwt'],
-      'Where sessions are stored',
+      [...AUTH_SESSION_DRIVERS],
+      'Where accounts and sessions live; database survives restarts (PostgreSQL), memory is for development',
     ),
     {
       key: 'AUTH_SESSION_LIFETIME',

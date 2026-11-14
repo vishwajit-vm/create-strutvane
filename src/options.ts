@@ -137,14 +137,21 @@ export function hasWeb(options: { readonly preset: string }): boolean {
 /** The `AUTH_SESSION_DRIVER` default written to `.env` / `.env.example` (docs/07 §2.3). */
 export const AUTH_SESSION_DRIVER_DEFAULT = 'database'
 
+/**
+ * The session drivers `@strutvane/auth` implements (identity/app-identity.ts): `database` (Better
+ * Auth on the app's PostgreSQL; elsewhere it falls back to memory with a warning) and `memory`
+ * (the in-process engine). Valkey and JWT sessions are not built yet, so the schema refuses them.
+ */
+export const AUTH_SESSION_DRIVERS = ['database', 'memory'] as const
+
 /** Databases `@strutvane/auth` treats as PostgreSQL. */
 const POSTGRES_DATABASES: ReadonlySet<string> = new Set(['postgres', 'azure-postgres'])
 
 /**
  * Does `@strutvane/auth` keep accounts and sessions in the app's own database? Only with auth on,
  * PostgreSQL (`postgres` / `azure-postgres`) and `session.driver: 'database'` (the generated
- * default). Then the app needs `better-auth` and the auth tables (`sv auth:migration`, then
- * `sv migrate`). Anywhere else auth uses its in-memory engine and warns at boot.
+ * default). Then the app needs `better-auth`; `sv migrate` creates the auth tables (they ship as a
+ * package migration of @strutvane/auth). Anywhere else auth uses its in-memory engine and warns.
  */
 export function persistentIdentity(options: {
   readonly preset: string

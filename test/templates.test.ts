@@ -662,7 +662,7 @@ describe('no User model (accounts belong to @strutvane/auth)', () => {
   })
 })
 
-describe('auth:migration (persistent identity on PostgreSQL)', () => {
+describe('persistent identity on PostgreSQL', () => {
   test('persistentIdentity: auth + postgres family + the database session driver', () => {
     expect(persistentIdentity(at({ name: 'a' }))).toBe(true)
     expect(persistentIdentity(at({ name: 'a', database: 'azure-postgres' }))).toBe(true)
@@ -674,15 +674,15 @@ describe('auth:migration (persistent identity on PostgreSQL)', () => {
     expect(persistentIdentity(at({ name: 'p', preset: 'ui' }))).toBe(false)
   })
 
-  test('README quick start and migrations README run it before migrate, in the pm form', () => {
+  test('sv migrate creates the auth tables: no separate step anywhere in the docs', () => {
     const readme = contentOf({ name: 'a', packageManager: 'npm' }, 'README.md')
-    const auth = readme.indexOf('npm run sv -- auth:migration')
-    expect(auth).toBeGreaterThan(-1)
-    expect(auth).toBeLessThan(readme.indexOf('npm run sv -- migrate'))
+    expect(readme).toContain('npm run sv -- migrate')
     expect(contentOf({ name: 'a' }, 'database/migrations/README.md')).toContain(
-      '`pnpm sv auth:migration` writes their migration here',
+      'ship with @strutvane/auth: `pnpm sv migrate` applies them',
     )
     for (const input of [
+      { name: 'a' },
+      { name: 'a', packageManager: 'npm' as const },
       { name: 'a', database: 'sqlite' as const },
       { name: 'a', auth: [] },
     ]) {

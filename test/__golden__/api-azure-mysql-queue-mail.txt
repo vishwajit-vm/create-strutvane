@@ -84,7 +84,7 @@ MAIL_FROM_NAME=fabrikam
 # ─── Auth ───────────────────────────────────────────────────────
 # Signs sessions and tokens. Rotate with: sv auth:secret:rotate
 AUTH_SECRET=
-# Where sessions are stored (database | valkey | jwt)
+# Where accounts and sessions live; database survives restarts (PostgreSQL), memory is for development (database | memory)
 AUTH_SESSION_DRIVER=database
 # Minutes of inactivity before sign-out
 AUTH_SESSION_LIFETIME=120
@@ -335,7 +335,7 @@ message if something is missing or invalid.
 | `MAIL_FROM_NAME` | `fabrikam` | Sender name |
 | **Auth** | | |
 | `AUTH_SECRET` | _generated_ | Signs sessions and tokens. Rotate with: sv auth:secret:rotate |
-| `AUTH_SESSION_DRIVER` | `database` | Where sessions are stored (database \| valkey \| jwt) |
+| `AUTH_SESSION_DRIVER` | `database` | Where accounts and sessions live; database survives restarts (PostgreSQL), memory is for development (database \| memory) |
 | `AUTH_SESSION_LIFETIME` | `120` | Minutes of inactivity before sign-out |
 | `AUTH_JWT_TTL` | `900` | Seconds an API access token is valid |
 | `AUTH_ALLOW_REGISTRATION` | `false` | Let anyone create an account (public sign-up). Off: only accounts you create can sign in |
@@ -861,7 +861,7 @@ export const envSchema = z
     MAIL_FROM_NAME: z.string().min(1),
     // Auth
     AUTH_SECRET: z.string().min(32, 'must be a long random secret (32+ characters)'),
-    AUTH_SESSION_DRIVER: z.enum(['database', 'valkey', 'jwt']),
+    AUTH_SESSION_DRIVER: z.enum(['database', 'memory']),
     AUTH_SESSION_LIFETIME: z.coerce.number().int().min(0),
     AUTH_JWT_TTL: z.coerce.number().int().min(0),
     AUTH_ALLOW_REGISTRATION: bool,
