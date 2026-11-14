@@ -50,7 +50,9 @@ It is one repo of the **Strutvane** polyrepo ecosystem (one GitHub repo per pack
 - `.strutvane/`: `lock.json`, `base/`, `templates/` (and `README.md`) are committed, everything else ignored (ADR-0012). `.gitignore`, `.strutvane/README.md` and the generated docs must agree.
 - `docker/` is git-ignored unless `--docker=commit` (checked with `git check-ignore`).
 - Nothing is written before every question is answered; a non-empty target is never touched.
-- Unpublished packages (framework, auth, logs) and browser tooling are stubbed in `test/helpers.ts` (`STUBS`) for the type-check. Keep the stubs to exactly what templates use. In the local workspace layout, `config/auth.ts` is also type-checked against the real `../auth/dist` types (`typecheckAuthConfig`).
+- Unpublished packages (framework, auth, logs) and browser tooling are stubbed in `test/helpers.ts` (`STUBS`) for the type-check. Keep the stubs to exactly what templates use. In the local workspace layout, `config/auth.ts` is also type-checked against the real `../auth/dist` types (`typecheckAuthConfig`), and `web/` against the real `../ui/dist` typings (`typecheckWeb`). `@strutvane/ui` 0.1.0-next.0 has no app shell or router: `web/app.tsx` builds `createHttpClient` + `fetchManifest` itself.
+- `test/bin.test.ts` builds with `tsdown.config.ts` into `build/` (git-ignored) and checks every `bin` target: exists, `#!` shebang, runs.
+- PostgreSQL apps with auth depend on `better-auth` (exactly `@strutvane/auth`'s optional peer; a test compares it with `../auth/package.json`).
 - pnpm projects get `pnpm-workspace.yaml` (`allowBuilds: esbuild`, `minimumReleaseAgeExclude` for `@strutvane/*` and `strutvane`): pnpm 12 fails installs on unapproved build scripts. npm, Yarn and Bun need no equivalent (see `pnpmWorkspace` in `templates/root.ts`).
 - The `sv` script calls `strutvane-cli` (the project-local CLI) so `sv help` shows project commands; `test/templates.test.ts` checks that bin name against `../cli`.
 

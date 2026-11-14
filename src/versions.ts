@@ -34,6 +34,8 @@ export const VERSIONS = {
   '@libsql/client': '0.18.0',
   '@azure/identity': '4.14.1',
   '@azure/postgresql-auth': '1.0.0',
+  // Exactly the optional peer @strutvane/auth declares: persistent sign-in on PostgreSQL runs on it.
+  'better-auth': '1.7.23',
   iovalkey: '0.4.0',
   bullmq: '6.7.6',
   nodemailer: '10.5.0',

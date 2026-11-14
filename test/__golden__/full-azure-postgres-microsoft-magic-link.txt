@@ -949,6 +949,7 @@ export const env = defineEnv(envSchema)
     "@tanstack/react-query": "5.107.1",
     "@tanstack/react-table": "9.3.1",
     "@tanstack/react-virtual": "3.14.26",
+    "better-auth": "1.7.23",
     "pg": "8.23.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -1182,24 +1183,109 @@ export default defineConfig({
 
 ===== web/app.tsx =====
 /**
- * The app shell. <StrutvaneProvider> loads the API manifest, so every resource gets its list,
- * form and detail pages without code. Override single pages in web/pages/<resource>/.
+ * The app shell: loads the API manifest and renders every resource with @strutvane/ui, a list
+ * (filters, sorting, paging) and a create / edit form, with no code per model. Override single
+ * widgets or cells with <StrutvaneProvider overrides={…}>; add your own screens in router.tsx.
  */
-import { StrutvaneProvider } from '@strutvane/ui/react'
-import { routes } from './router.tsx'
+import { createHttpClient, fetchManifest } from '@strutvane/ui'
+import { ResourceForm, ResourceList, StrutvaneProvider } from '@strutvane/ui/react'
+import { QueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { pages } from './router.tsx'
 
-const firstStep = 'pnpm sv make:model Invoice'
+type Manifest = Awaited<ReturnType<typeof fetchManifest>>
+type Resource = Manifest['resources'][number]
+
+/** What the main area shows. */
+type View =
+  | { readonly kind: 'list'; readonly resource: Resource }
+  | { readonly kind: 'form'; readonly resource: Resource; readonly recordId?: string }
+  | { readonly kind: 'page'; readonly index: number }
+
+/** VITE_API_URL is relative (`/api/v1`, served with the UI): make it absolute. */
+const apiUrl = new URL(import.meta.env.VITE_API_URL, window.location.origin).href
+const api = createHttpClient({ baseUrl: apiUrl })
+const queryClient = new QueryClient()
 
 export function App() {
+  const [manifest, setManifest] = useState<Manifest>()
+  const [error, setError] = useState<string>()
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchManifest({ baseUrl: apiUrl, signal: controller.signal }).then(
+      setManifest,
+      (cause: unknown) => {
+        if (!controller.signal.aborted)
+          setError(cause instanceof Error ? cause.message : String(cause))
+      },
+    )
+    return () => controller.abort()
+  }, [])
+
   return (
-    <StrutvaneProvider apiUrl={import.meta.env.VITE_API_URL} routes={routes}>
-      <main className="sv-shell">
-        <h1>{import.meta.env.VITE_APP_NAME}</h1>
+    <main className="sv-shell">
+      <h1>{import.meta.env.VITE_APP_NAME}</h1>
+      {error !== undefined ? (
+        <p role="alert">Could not load the API manifest: {error}</p>
+      ) : manifest === undefined ? (
+        <p>Loading…</p>
+      ) : (
+        <StrutvaneProvider api={api} manifest={manifest} queryClient={queryClient}>
+          <Workspace resources={manifest.resources} />
+        </StrutvaneProvider>
+      )}
+    </main>
+  )
+}
+
+function Workspace({ resources }: { readonly resources: readonly Resource[] }) {
+  const first = resources[0]
+  const [view, setView] = useState<View | undefined>(first && { kind: 'list', resource: first })
+
+  return (
+    <>
+      <nav aria-label="Menu">
+        {resources.map((resource) => (
+          <button
+            key={resource.name}
+            type="button"
+            onClick={() => setView({ kind: 'list', resource })}
+          >
+            {resource.pluralLabel}
+          </button>
+        ))}
+        {pages.map((page, index) => (
+          <button key={page.title} type="button" onClick={() => setView({ kind: 'page', index })}>
+            {page.title}
+          </button>
+        ))}
+      </nav>
+      {view === undefined ? (
         <p>
-          Add your first resource: <code>{firstStep}</code>
+          Add your first resource: <code>pnpm sv make:model Invoice</code>
         </p>
-      </main>
-    </StrutvaneProvider>
+      ) : view.kind === 'page' ? (
+        pages[view.index]?.element
+      ) : view.kind === 'form' ? (
+        <ResourceForm
+          key={`${view.resource.name}:${view.recordId ?? 'new'}`}
+          resource={view.resource}
+          {...(view.recordId === undefined ? {} : { recordId: view.recordId })}
+          onSaved={() => setView({ kind: 'list', resource: view.resource })}
+          onCancel={() => setView({ kind: 'list', resource: view.resource })}
+        />
+      ) : (
+        <ResourceList
+          key={view.resource.name}
+          resource={view.resource}
+          onCreate={() => setView({ kind: 'form', resource: view.resource })}
+          onEdit={(record) =>
+            setView({ kind: 'form', resource: view.resource, recordId: record.id })
+          }
+        />
+      )}
+    </>
   )
 }
 
@@ -1261,12 +1347,17 @@ For the full source of a page, eject it: `pnpm sv eject ui Invoice --page form`.
 
 ===== web/router.tsx =====
 /**
- * Your own pages. Resource pages (list, create, edit, detail) are routed automatically;
- * add only extra screens here, e.g. { path: "/reports", element: <Reports /> }.
+ * Your own screens, shown in the menu next to the resources, e.g.
+ * { title: 'Reports', element: <Reports /> }. Resource lists and forms need no entry here.
  */
-import type { RouteDefinition } from '@strutvane/ui/react'
+import type { ReactNode } from 'react'
 
-export const routes: RouteDefinition[] = []
+export interface CustomPage {
+  readonly title: string
+  readonly element: ReactNode
+}
+
+export const pages: readonly CustomPage[] = []
 
 ===== web/theme/tokens.css =====
 /* Design tokens: change these to re-theme every generated screen. */

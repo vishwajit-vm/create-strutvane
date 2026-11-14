@@ -195,6 +195,63 @@ export async function typecheckAuthConfig(dir: string): Promise<ToolResult> {
   }
 }
 
+/**
+ * The sibling `@strutvane/ui` checkout (local workspace layout only). Its `dist/` typings are the
+ * ones published as 0.1.0-next.0, and its `node_modules` has the React, React DOM and TanStack
+ * Query types the generated `web/` imports (this repo installs no browser packages).
+ */
+export const UI_ROOT: string = join(PKG_ROOT, '..', 'ui')
+export const UI_TYPES: string = join(UI_ROOT, 'dist', 'react', 'index.d.mts')
+
+/**
+ * Type-check the generated `web/` folder (its own tsconfig: DOM, JSX, strict) against the REAL
+ * `@strutvane/ui` typings, not a stub, so a template that uses a prop or export the package does
+ * not have is a compile error. `vite/client` is replaced by a two-line `import.meta.env` shim.
+ */
+export async function typecheckWeb(dir: string): Promise<ToolResult> {
+  const posixPath = (...parts: string[]) =>
+    join(...parts)
+      .split(sep)
+      .join('/')
+  const config = join(dir, 'web', 'tsconfig.ui-check.json')
+  const shim = join(dir, 'web', 'env.ui-check.d.ts')
+  await writeFile(
+    shim,
+    // The two declarations of `vite/client` that web/ relies on (its own shapes, `any` included).
+    [
+      '// biome-ignore lint: test-only shim',
+      'interface ImportMetaEnv { readonly [key: string]: any }',
+      'interface ImportMeta { readonly env: ImportMetaEnv }',
+      "declare module '*.css' {}",
+      '',
+    ].join('\n'),
+  )
+  await writeFile(
+    config,
+    JSON.stringify({
+      extends: './tsconfig.json',
+      compilerOptions: {
+        types: [],
+        paths: {
+          '@strutvane/ui': [posixPath(UI_ROOT, 'dist', 'index.d.mts')],
+          '@strutvane/ui/react': [posixPath(UI_ROOT, 'dist', 'react', 'index.d.mts')],
+          '*': [
+            posixPath(UI_ROOT, 'node_modules', '@types', '*'),
+            posixPath(UI_ROOT, 'node_modules', '*'),
+          ],
+        },
+      },
+      include: ['.'],
+    }),
+  )
+  try {
+    return await tool(process.execPath, [BIN.tsc, '--noEmit', '-p', config], dir)
+  } finally {
+    await rm(config, { force: true })
+    await rm(shim, { force: true })
+  }
+}
+
 /** `biome check` with the project's own biome.json (formatting + lint + import order). */
 export async function biomeCheck(dir: string): Promise<ToolResult> {
   const bin = join(PKG_ROOT, 'node_modules', '@biomejs', 'biome', 'bin', 'biome')

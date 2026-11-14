@@ -134,6 +134,9 @@ The end-to-end tests generate real projects for seven option combinations and ch
 - Biome with the project's own config
 - the project's own Vitest suite
 - `git check-ignore` on the generated `.gitignore`
+- in the local workspace layout, `config/auth.ts` against the real `@strutvane/auth` types and `web/` against the real `@strutvane/ui` typings (the published 0.1.0-next.0 API)
+
+`test/bin.test.ts` builds the CLI with the repo's own tsdown config into a temporary folder and checks that every `bin` target exists, starts with a `#!` shebang and runs, so the check does not depend on `dist/` or on the order of the `ci` steps.
 
 Packages that aren't published yet (framework, auth, logs) are replaced by type stubs that cover only the surface the templates use. Dependency versions for generated projects live in [`src/versions.ts`](src/versions.ts).
 

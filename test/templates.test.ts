@@ -556,6 +556,30 @@ describe('database seeder and factories', () => {
   })
 })
 
+describe('persistent identity (auth on PostgreSQL)', () => {
+  test('postgres and azure-postgres apps with auth depend on better-auth; others do not', () => {
+    for (const database of ['postgres', 'azure-postgres'] as const) {
+      expect(dependencies(at({ name: 'a', database }))['better-auth']).toBe(VERSIONS['better-auth'])
+    }
+    expect(dependencies(at({ name: 'a', auth: [] }))['better-auth']).toBeUndefined()
+    for (const database of ['mysql', 'azure-mysql', 'sqlite'] as const) {
+      expect(dependencies(at({ name: 'a', database }))['better-auth']).toBeUndefined()
+    }
+    expect(dependencies(at({ name: 'p', preset: 'ui' }))['better-auth']).toBeUndefined()
+  })
+
+  const authManifest = join(PKG_ROOT, '..', 'auth', 'package.json')
+  test.skipIf(!existsSync(authManifest))(
+    "better-auth is pinned to exactly @strutvane/auth's peer version",
+    () => {
+      const pkg = JSON.parse(readFileSync(authManifest, 'utf8')) as {
+        peerDependencies?: Record<string, string>
+      }
+      expect(pkg.peerDependencies?.['better-auth']).toBe(VERSIONS['better-auth'])
+    },
+  )
+})
+
 describe('integration regressions (local e2e journey)', () => {
   test('the project-local CLI is a dev dependency, so the `strutvane` launcher never falls back to npx', () => {
     expect(devDependencies(at({ name: 'a' }))['@strutvane/cli']).toBe(STRUTVANE_VERSION)

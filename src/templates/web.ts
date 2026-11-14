@@ -91,48 +91,8 @@ export function webFiles(o: ProjectOptions): GeneratedFile[] {
         ')',
       ),
     ),
-    file(
-      'web/app.tsx',
-      lines(
-        '/**',
-        ' * The app shell. <StrutvaneProvider> loads the API manifest, so every resource gets its list,',
-        ' * form and detail pages without code. Override single pages in web/pages/<resource>/.',
-        ' */',
-        "import { StrutvaneProvider } from '@strutvane/ui/react'",
-        "import { routes } from './router.tsx'",
-        '',
-        !external && `const firstStep = '${sv('make:model Invoice')}'`,
-        !external && '',
-        'export function App() {',
-        '  return (',
-        '    <StrutvaneProvider apiUrl={import.meta.env.VITE_API_URL} routes={routes}>',
-        '      <main className="sv-shell">',
-        '        <h1>{import.meta.env.VITE_APP_NAME}</h1>',
-        external
-          ? '        <p>Connected to your API. Resources from its manifest appear in the menu.</p>'
-          : [
-              '        <p>',
-              '          Add your first resource: <code>{firstStep}</code>',
-              '        </p>',
-            ].join('\n'),
-        '      </main>',
-        '    </StrutvaneProvider>',
-        '  )',
-        '}',
-      ),
-    ),
-    file(
-      'web/router.tsx',
-      lines(
-        '/**',
-        ' * Your own pages. Resource pages (list, create, edit, detail) are routed automatically;',
-        ' * add only extra screens here, e.g. { path: "/reports", element: <Reports /> }.',
-        ' */',
-        "import type { RouteDefinition } from '@strutvane/ui/react'",
-        '',
-        'export const routes: RouteDefinition[] = []',
-      ),
-    ),
+    appShell(o),
+    customPages(),
     file(
       'web/dashboard/README.md',
       lines(
@@ -209,4 +169,168 @@ export function webFiles(o: ProjectOptions): GeneratedFile[] {
         ]
       : []),
   ]
+}
+
+/**
+ * `web/app.tsx`: the app shell, written against the API `@strutvane/ui` 0.1.0-next.0 publishes.
+ *
+ * `@strutvane/ui` has no app shell or router yet: `<StrutvaneProvider>` needs a ready `api`
+ * (`createHttpClient`) and an already fetched `manifest` (`fetchManifest`), and `<ResourceList>` /
+ * `<ResourceForm>` render one resource each. So the shell loads the manifest, shows a menu of
+ * resources (plus the pages in `router.tsx`) and switches between a list and a form.
+ *
+ * `fetchManifest` resolves the absolute manifest path (`/.well-known/strutvane.json`) against its
+ * `baseUrl`, which must therefore be absolute: `VITE_API_URL` is `/api/v1` (same origin) in the
+ * full preset, so it is resolved against `window.location.origin` first. The ui preset talks to
+ * another origin, so it sends cookies with `credentials: 'include'`.
+ */
+function appShell(o: ProjectOptions): GeneratedFile {
+  const external = !hasServer(o)
+  return file(
+    'web/app.tsx',
+    lines(
+      '/**',
+      ' * The app shell: loads the API manifest and renders every resource with @strutvane/ui, a list',
+      ' * (filters, sorting, paging) and a create / edit form, with no code per model. Override single',
+      ' * widgets or cells with <StrutvaneProvider overrides={…}>; add your own screens in router.tsx.',
+      ' */',
+      "import { createHttpClient, fetchManifest } from '@strutvane/ui'",
+      "import { ResourceForm, ResourceList, StrutvaneProvider } from '@strutvane/ui/react'",
+      "import { QueryClient } from '@tanstack/react-query'",
+      "import { useEffect, useState } from 'react'",
+      "import { pages } from './router.tsx'",
+      '',
+      'type Manifest = Awaited<ReturnType<typeof fetchManifest>>',
+      "type Resource = Manifest['resources'][number]",
+      '',
+      '/** What the main area shows. */',
+      'type View =',
+      "  | { readonly kind: 'list'; readonly resource: Resource }",
+      "  | { readonly kind: 'form'; readonly resource: Resource; readonly recordId?: string }",
+      "  | { readonly kind: 'page'; readonly index: number }",
+      '',
+      external
+        ? '/** The API runs on another origin (absolute VITE_API_URL); cookies are sent to it. */'
+        : '/** VITE_API_URL is relative (`/api/v1`, served with the UI): make it absolute. */',
+      'const apiUrl = new URL(import.meta.env.VITE_API_URL, window.location.origin).href',
+      external
+        ? "const api = createHttpClient({ baseUrl: apiUrl, credentials: 'include' })"
+        : 'const api = createHttpClient({ baseUrl: apiUrl })',
+      'const queryClient = new QueryClient()',
+      '',
+      'export function App() {',
+      '  const [manifest, setManifest] = useState<Manifest>()',
+      '  const [error, setError] = useState<string>()',
+      '',
+      '  useEffect(() => {',
+      '    const controller = new AbortController()',
+      external
+        ? "    fetchManifest({ baseUrl: apiUrl, signal: controller.signal, credentials: 'include' }).then("
+        : '    fetchManifest({ baseUrl: apiUrl, signal: controller.signal }).then(',
+      '      setManifest,',
+      '      (cause: unknown) => {',
+      '        if (!controller.signal.aborted)',
+      '          setError(cause instanceof Error ? cause.message : String(cause))',
+      '      },',
+      '    )',
+      '    return () => controller.abort()',
+      '  }, [])',
+      '',
+      '  return (',
+      '    <main className="sv-shell">',
+      '      <h1>{import.meta.env.VITE_APP_NAME}</h1>',
+      '      {error !== undefined ? (',
+      '        <p role="alert">Could not load the API manifest: {error}</p>',
+      '      ) : manifest === undefined ? (',
+      '        <p>Loading…</p>',
+      '      ) : (',
+      '        <StrutvaneProvider api={api} manifest={manifest} queryClient={queryClient}>',
+      '          <Workspace resources={manifest.resources} />',
+      '        </StrutvaneProvider>',
+      '      )}',
+      '    </main>',
+      '  )',
+      '}',
+      '',
+      'function Workspace({ resources }: { readonly resources: readonly Resource[] }) {',
+      '  const first = resources[0]',
+      "  const [view, setView] = useState<View | undefined>(first && { kind: 'list', resource: first })",
+      '',
+      '  return (',
+      '    <>',
+      '      <nav aria-label="Menu">',
+      '        {resources.map((resource) => (',
+      '          <button',
+      '            key={resource.name}',
+      '            type="button"',
+      "            onClick={() => setView({ kind: 'list', resource })}",
+      '          >',
+      '            {resource.pluralLabel}',
+      '          </button>',
+      '        ))}',
+      '        {pages.map((page, index) => (',
+      '          <button key={page.title} type="button" onClick={() => setView({ kind: \'page\', index })}>',
+      '            {page.title}',
+      '          </button>',
+      '        ))}',
+      '      </nav>',
+      '      {view === undefined ? (',
+      external
+        ? '        <p>The API manifest lists no resources yet.</p>'
+        : [
+            '        <p>',
+            `          Add your first resource: <code>${svCommand(o.packageManager, 'make:model Invoice')}</code>`,
+            '        </p>',
+          ].join('\n'),
+      "      ) : view.kind === 'page' ? (",
+      '        pages[view.index]?.element',
+      "      ) : view.kind === 'form' ? (",
+      '        <ResourceForm',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: JSX source text, not a JS template
+      "          key={`${view.resource.name}:${view.recordId ?? 'new'}`}",
+      '          resource={view.resource}',
+      '          {...(view.recordId === undefined ? {} : { recordId: view.recordId })}',
+      "          onSaved={() => setView({ kind: 'list', resource: view.resource })}",
+      "          onCancel={() => setView({ kind: 'list', resource: view.resource })}",
+      '        />',
+      '      ) : (',
+      '        <ResourceList',
+      '          key={view.resource.name}',
+      '          resource={view.resource}',
+      "          onCreate={() => setView({ kind: 'form', resource: view.resource })}",
+      '          onEdit={(record) =>',
+      "            setView({ kind: 'form', resource: view.resource, recordId: record.id })",
+      '          }',
+      '        />',
+      '      )}',
+      '    </>',
+      '  )',
+      '}',
+    ),
+  )
+}
+
+/**
+ * `web/router.tsx`: the app's own screens, shown in the menu next to the resources. A plain list,
+ * because `@strutvane/ui` 0.1.0-next.0 has no router or route type (`RouteDefinition` does not
+ * exist); swap it for a router once you need URLs.
+ */
+function customPages(): GeneratedFile {
+  return file(
+    'web/router.tsx',
+    lines(
+      '/**',
+      ' * Your own screens, shown in the menu next to the resources, e.g.',
+      " * { title: 'Reports', element: <Reports /> }. Resource lists and forms need no entry here.",
+      ' */',
+      "import type { ReactNode } from 'react'",
+      '',
+      'export interface CustomPage {',
+      '  readonly title: string',
+      '  readonly element: ReactNode',
+      '}',
+      '',
+      'export const pages: readonly CustomPage[] = []',
+    ),
+  )
 }

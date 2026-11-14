@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { envKeys, looksSecret } from '@strutvane/devkit'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { buildEnvSpec } from '../src/env-spec.ts'
-import type { ProjectOptions } from '../src/options.ts'
+import { hasWeb, type ProjectOptions } from '../src/options.ts'
 import { renderProject } from '../src/render.ts'
 import { COMBOS } from './combos.ts'
 import {
@@ -20,6 +20,8 @@ import {
   removeDir,
   typecheck,
   typecheckAuthConfig,
+  typecheckWeb,
+  UI_TYPES,
   vitestRun,
 } from './helpers.ts'
 
@@ -109,6 +111,32 @@ describe.each(COMBOS)('$id', ({ id, input }) => {
       await writeFile(path, source.replace('defineAuthConfig({', 'defineAuthConfig({ rolse: {},'))
       try {
         expect((await typecheckAuthConfig(dir)).code).not.toBe(0)
+      } finally {
+        await writeFile(path, source)
+      }
+    },
+  )
+
+  // Local workspace only: web/ against the real @strutvane/ui typings (published 0.1.0-next.0).
+  test.skipIf(!existsSync(UI_TYPES))(
+    'web/ type-checks against the real @strutvane/ui API',
+    async () => {
+      if (!hasWeb(options)) return
+      const result = await typecheckWeb(dir)
+      expect(result.output).toBe('')
+      expect(result.code).toBe(0)
+      // Negative control: the check has teeth (a prop the package does not have fails to compile).
+      const path = join(dir, 'web', 'app.tsx')
+      const source = await readFile(path, 'utf8')
+      await writeFile(
+        path,
+        source.replace(
+          '<StrutvaneProvider api={api}',
+          '<StrutvaneProvider apiUrl="/api/v1" api={api}',
+        ),
+      )
+      try {
+        expect((await typecheckWeb(dir)).code).not.toBe(0)
       } finally {
         await writeFile(path, source)
       }

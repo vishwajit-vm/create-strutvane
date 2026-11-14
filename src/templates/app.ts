@@ -219,9 +219,9 @@ function databaseFiles(o: ProjectOptions): GeneratedFile[] {
  * `database/seeders/database.seeder.ts`: the only file `sv db:seed` runs (without `--class`).
  *
  * The exact shape matters: `sv make:model` in `@strutvane/cli` edits this file, inserting
- * `await call(…)` lines before the comment line and adding `call` to the callback's parameters, in
- * dependency order (a model's parents first). `test/templates.test.ts` pins the content; change it
- * only together with the CLI.
+ * `await call(…)` lines after the comment line and adding `call` to the callback's parameters, in
+ * dependency order (a model's parents first); when the file is missing, it recreates it with this
+ * content. `test/templates.test.ts` pins the content; change it only together with the CLI.
  */
 export function databaseSeeder(o: ProjectOptions): GeneratedFile {
   return file(
