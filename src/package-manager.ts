@@ -5,6 +5,7 @@
  * @module
  */
 import type { PackageManager } from './options.ts'
+import { VERSIONS } from './versions.ts'
 
 /** The command that runs a package.json script, e.g. `pnpm dev` / `npm run dev`. */
 export function runScript(pm: PackageManager, script: string): string {
@@ -41,4 +42,15 @@ export function ciInstallCommand(pm: PackageManager): string {
     case 'bun':
       return 'bun install --frozen-lockfile'
   }
+}
+
+/**
+ * How to run the package manager through Corepack when it is not on the PATH, e.g.
+ * `corepack pnpm@12.18.0`, or `undefined` when there is nothing pinned to run.
+ *
+ * Only pnpm projects pin a version (`packageManager` in the generated package.json), so only pnpm
+ * gets a Corepack fallback; it uses exactly that pinned version.
+ */
+export function corepackRunner(pm: PackageManager): string | undefined {
+  return pm === 'pnpm' ? `corepack pnpm@${VERSIONS.pnpm}` : undefined
 }

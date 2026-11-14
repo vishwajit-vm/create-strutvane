@@ -17,13 +17,15 @@
 ## Quick start
 
 ```bash
-npm create strutvane@latest
+npm create strutvane@next
 ```
+
+> Strutvane is pre-1.0, so releases are published under the npm `next` dist-tag (`@latest` is a name placeholder without a binary). From 1.0 the command is `npm create strutvane@latest`. With pnpm: `pnpm create strutvane@next`. `create-strutvane --help` always prints the command for its own release channel.
 
 It asks a few questions (what you're building, database, sign-in methods, extras) and writes the project. Every question also has a flag, so you can run it without any prompts:
 
 ```bash
-npm create strutvane@latest acme -- --preset full --db postgres --auth email,google --tenancy --yes
+npm create strutvane@next acme -- --preset full --db postgres --auth email,google --tenancy --yes
 cd acme
 pnpm install
 pnpm services:up     # local Postgres in Docker
@@ -59,6 +61,7 @@ acme/
 ├─ .env.example         every key, documented, no secrets           (committed)
 ├─ strutvane.config.ts  which Strutvane packages are active
 ├─ package.json  tsconfig.json  biome.json  vitest.config.ts  playwright.config.ts
+├─ pnpm-workspace.yaml  pnpm settings                               (pnpm only)
 ├─ .gitignore  .gitattributes  .editorconfig  .github/workflows/ci.yml
 └─ README.md  CLAUDE.md
 ```
@@ -68,6 +71,8 @@ acme/
 **Secure defaults.** `.env.example` (committed, the starting point for other environments) has `APP_DEBUG=false` and `API_DOCS=false`; your local `.env` turns both on. The generated `env.schema.ts` refuses to boot with `APP_DEBUG=true` unless `APP_ENV=local`, with a `*` in `CORS_ORIGINS` (the API allows credentials), and with non-`https://` CORS origins in production. Public sign-up is off (`AUTH_ALLOW_REGISTRATION=false`). `config/auth.ts` (typed by `defineAuthConfig` from `@strutvane/auth`) gets the default roles from the [auth spec §2.7 and §4.4](https://github.com/vishwajit-vm/strutvane/blob/main/docs/07-package-auth.md): `admin`, `member` (updates and deletes only its own records: `own: true`, matched on `ownerId`), `viewer`, and with tenancy `owner` for a tenant's creator (`scope: 'tenant'`). Admin's user-management grants are `scope: 'global'` (platform administrators only, never a tenant's own admin), and identity, authorization, tenancy and audit records are never matched by wildcards. `@strutvane/auth` enforces the role map together with `app/policies/*.policy.ts` (deny-by-default; a policy `deny` always wins). Reverse proxies are not trusted unless you set `TRUST_PROXY` (only behind a proxy you control), and `config/auth.ts` lists `trustedOrigins` and an empty `trustedProxies`.
 
 **`pnpm sv`** runs the project's own CLI (`strutvane-cli` from `@strutvane/cli` in devDependencies), so `pnpm sv help` lists the project's commands, including those of installed packages. A global `strutvane` launcher runs the same CLI for every command except `help`.
+
+**pnpm projects** get a `pnpm-workspace.yaml` (verified with pnpm 12.18.0). pnpm 12 stops `pnpm install` with `ERR_PNPM_IGNORED_BUILDS` when a dependency has a build script nobody approved, so the file approves exactly one: `allowBuilds: { esbuild: true }` (esbuild, used by Vite and the migration tooling, sets up its platform binary in a build step). It also lists `@strutvane/*` and `strutvane` in `minimumReleaseAgeExclude`: Strutvane pre-releases are staged and approved with 2FA ([ADR-0018](https://github.com/vishwajit-vm/strutvane/blob/main/docs/adr/0018-staged-npm-publishing.md)), and every third-party package keeps pnpm's "too new" protection. npm, Yarn and Bun need no equivalent: npm 11 and Yarn run build scripts, npm 12 only warns and esbuild still works through its platform package, and Bun trusts esbuild by default. The "Next steps" note and the generated README show the Corepack fallback, `corepack pnpm@12.18.0 <command>`, for machines without pnpm on the PATH.
 
 **Docker is local-only** ([ADR-0006](https://github.com/vishwajit-vm/strutvane/blob/main/docs/adr/0006-docker-local-only.md)). `docker/compose.yaml` runs Postgres or MySQL, Valkey and Mailpit as your choices need. It reads credentials from `.env` and binds every port to `127.0.0.1`. It is git-ignored unless you pass `--docker=commit`.
 

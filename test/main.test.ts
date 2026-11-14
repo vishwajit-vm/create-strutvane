@@ -136,6 +136,16 @@ describe('flags-only (non-interactive)', () => {
     expect(steps).toContain('npm run services:up')
   })
 
+  test('creating in the current folder prints no cd step; pnpm gets the Corepack fallback', async () => {
+    const { cwd, ui, deps } = await setup()
+    expect(await main(['.', '--name', 'acme', '--no-git', '--pm', 'pnpm'], deps)).toBe(0)
+    expect(await exists(join(cwd, 'package.json'))).toBe(true)
+    const note = ui.text('note')
+    expect(note).toMatch(/^Next steps: pnpm install\n/)
+    expect(note).not.toMatch(/\bcd\b/)
+    expect(note).toMatch(/\n\npnpm not installed\? use: corepack pnpm@\d+\.\d+\.\d+ <command>$/)
+  })
+
   test('ui preset next steps have no migrations', async () => {
     const { ui, deps } = await setup()
     expect(await main(['portal', '--preset', 'ui', '--no-git', '--pm', 'yarn'], deps)).toBe(0)

@@ -161,4 +161,17 @@ describe('helpText', () => {
       expect(text).toContain(flag)
     }
   })
+
+  test('create commands follow the release channel of the version (no binary on @latest pre-1.0)', () => {
+    const pre = helpText('0.1.0-next.0')
+    expect(pre).toContain('  npm create strutvane@next [folder] -- [options]')
+    expect(pre).toContain('  pnpm create strutvane@next [folder] [options]')
+    expect(pre).toContain('  pnpm create strutvane@next portal --preset ui --dry-run')
+    expect(pre).not.toContain('@latest')
+    // Every create command names a tag: a bare `pnpm create strutvane` resolves to @latest too.
+    expect(pre).not.toMatch(/create strutvane(?!@)/)
+    const stable = helpText('1.0.0')
+    expect(stable).toContain('  npm create strutvane@latest acme')
+    expect(stable).not.toContain('@next')
+  })
 })

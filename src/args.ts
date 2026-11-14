@@ -2,8 +2,10 @@
  * Command-line parsing. Every prompt has a flag, so the starter is fully scriptable:
  *
  * ```bash
- * npm create strutvane@latest acme -- --preset api --db mysql --auth email,google --yes
+ * npm create strutvane@next acme -- --preset api --db mysql --auth email,google --yes
  * ```
+ *
+ * (`@next` while Strutvane is pre-1.0; `@latest` from 1.0. {@link helpText} prints the right one.)
  *
  * A small hand-written parser (rather than `node:util` `parseArgs`) because some flags take an
  * optional value (`--docker` / `--docker=commit`, `--tenancy` / `--tenancy=none`) and every error
@@ -22,6 +24,7 @@ import {
   PACKAGE_MANAGERS,
   PRESETS,
 } from './options.ts'
+import { createCommand } from './release-channel.ts'
 
 /** The parsed command line. */
 export interface ParsedArgs {
@@ -42,14 +45,19 @@ export class ArgsError extends Error {
   }
 }
 
-/** `--help` text. */
+/**
+ * `--help` text. The create commands use the dist-tag `version` is published under
+ * ({@link createCommand}): `@next` for a pre-release, because `@latest` has no binary before 1.0.
+ */
 export function helpText(version: string): string {
+  const npmCreate = createCommand(version, 'npm')
+  const pnpmCreate = createCommand(version, 'pnpm')
   return [
     `create-strutvane ${version}: start a new Strutvane project`,
     '',
     'Usage:',
-    '  npm create strutvane@latest [folder] -- [options]',
-    '  pnpm create strutvane [folder] [options]',
+    `  ${npmCreate} [folder] -- [options]`,
+    `  ${pnpmCreate} [folder] [options]`,
     '',
     'Options (anything not given is asked, or defaulted with --yes):',
     `  --preset <name>          ${PRESETS.join(' | ')} (default: full)`,
@@ -69,9 +77,9 @@ export function helpText(version: string): string {
     '  -v, --version            show the version',
     '',
     'Examples:',
-    '  npm create strutvane@latest acme',
-    '  pnpm create strutvane acme --preset api --db mysql --auth email,google --yes',
-    '  pnpm create strutvane portal --preset ui --dry-run',
+    `  ${npmCreate} acme`,
+    `  ${pnpmCreate} acme --preset api --db mysql --auth email,google --yes`,
+    `  ${pnpmCreate} portal --preset ui --dry-run`,
   ].join('\n')
 }
 

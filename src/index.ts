@@ -1,8 +1,10 @@
 /**
  * `create-strutvane`: start a new Strutvane project.
  *
- * Most people run the binary (`npm create strutvane@latest`). This entry point exposes the same
- * engine for tools and tests: validate choices, render the files, write them transactionally.
+ * Most people run the binary: `npm create strutvane@next` while Strutvane is pre-1.0 (pre-releases
+ * are published under the `next` dist-tag; `latest` has no binary yet), `npm create strutvane@latest`
+ * from 1.0. This entry point exposes the same engine for tools and tests: validate choices, render
+ * the files, write them transactionally.
  *
  * ```ts
  * import { createProject, resolveOptions } from 'create-strutvane'
@@ -24,6 +26,7 @@ export {
   TargetNotEmptyError,
 } from './generate.ts'
 export { DEFAULT_NAME, isCi, type MainDeps, main, type Ui } from './main.ts'
+export { nextSteps } from './next-steps.ts'
 export {
   AUTH_METHODS,
   type AuthMethod,
@@ -46,6 +49,7 @@ export {
 } from './options.ts'
 export { type CommandRunner, type GitOutcome, type PostResult, runPostSteps } from './post.ts'
 export { CANCEL, CancelledError, type Choice, type Prompter } from './prompts.ts'
+export { createCommand, releaseTag } from './release-channel.ts'
 export { type RenderedProject, renderProject, renderTree } from './render.ts'
 export { validateProjectName } from './validate-name.ts'
 export { STRUTVANE_VERSION } from './versions.ts'

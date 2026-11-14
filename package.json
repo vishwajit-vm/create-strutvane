@@ -1,7 +1,7 @@
 {
   "name": "create-strutvane",
   "version": "0.1.0-next.0",
-  "description": "Start a new Strutvane project in one command: npm create strutvane@latest. Full-stack, API-only or UI-only presets with configs, .env/.env.example, local Docker services, tests and CI ready.",
+  "description": "Start a new Strutvane project in one command: npm create strutvane@next (pre-1.0; @latest from 1.0). Full-stack, API-only or UI-only presets with configs, .env/.env.example, local Docker services, tests and CI ready.",
   "keywords": [
     "strutvane",
     "create",
@@ -24,7 +24,7 @@
   "type": "module",
   "sideEffects": false,
   "bin": {
-    "create-strutvane": "./dist/cli.mjs"
+    "create-strutvane": "dist/cli.mjs"
   },
   "exports": {
     ".": {

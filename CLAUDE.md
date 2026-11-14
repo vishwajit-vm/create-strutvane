@@ -10,7 +10,7 @@ The file below is synced from strutvane-tooling and is identical in every repo. 
 
 ## What this repo is
 
-Start a new Strutvane project in one command: npm create strutvane@latest. Presets for full-stack (API + UI + auth), API-only and UI-only, with configs, .env/.env.example, local Docker services, tests and CI ready.
+Start a new Strutvane project in one command: `npm create strutvane@next` (pre-releases are published under the `next` dist-tag; it becomes `@latest` at 1.0). Presets for full-stack (API + UI + auth), API-only and UI-only, with configs, .env/.env.example, local Docker services, tests and CI ready.
 
 It is one repo of the **Strutvane** polyrepo ecosystem (one GitHub repo per package; see ADR-0002). The hub with the full blueprint is https://github.com/vishwajit-vm/strutvane. Locally it is the umbrella folder two levels up: `../../docs/`.
 
@@ -35,6 +35,8 @@ It is one repo of the **Strutvane** polyrepo ecosystem (one GitHub repo per pack
 | `render.ts` | Assembles every template; pure; refuses duplicate paths. |
 | `generate.ts` | Writes through devkit's staged fs + env editor; target check, rollback/cleanup, dry run, show-once secrets. |
 | `post.ts` | `git init` + first commit, optional install; injectable `CommandRunner`; never throws. |
+| `next-steps.ts` | The "Next steps" note: no `cd` when the target is the current folder; a Corepack fallback line for pnpm. |
+| `release-channel.ts` | The dist-tag of our own version (`0.1.0-next.0` → `next`), so help text prints a create command that has a binary. |
 | `main.ts` / `cli.ts` | The CLI flow (exit codes 0/1/130) behind an injectable `Ui`; `cli.ts` only wires the process. |
 | `versions.ts` | Every version written into generated projects (exact pins, SHA-pinned actions). |
 
@@ -49,6 +51,7 @@ It is one repo of the **Strutvane** polyrepo ecosystem (one GitHub repo per pack
 - `docker/` is git-ignored unless `--docker=commit` (checked with `git check-ignore`).
 - Nothing is written before every question is answered; a non-empty target is never touched.
 - Unpublished packages (framework, auth, logs) and browser tooling are stubbed in `test/helpers.ts` (`STUBS`) for the type-check. Keep the stubs to exactly what templates use. In the local workspace layout, `config/auth.ts` is also type-checked against the real `../auth/dist` types (`typecheckAuthConfig`).
+- pnpm projects get `pnpm-workspace.yaml` (`allowBuilds: esbuild`, `minimumReleaseAgeExclude` for `@strutvane/*` and `strutvane`): pnpm 12 fails installs on unapproved build scripts. npm, Yarn and Bun need no equivalent (see `pnpmWorkspace` in `templates/root.ts`).
 - The `sv` script calls `strutvane-cli` (the project-local CLI) so `sv help` shows project commands; `test/templates.test.ts` checks that bin name against `../cli`.
 
 ## Boundaries (non-negotiable)

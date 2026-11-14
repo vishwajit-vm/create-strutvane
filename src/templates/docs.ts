@@ -7,7 +7,7 @@
 import type { GeneratedFile } from '@strutvane/devkit'
 import type { EnvSection } from '../env-spec.ts'
 import { hasServer, hasWeb, type ProjectOptions } from '../options.ts'
-import { installCommand, runScript, svCommand } from '../package-manager.ts'
+import { corepackRunner, installCommand, runScript, svCommand } from '../package-manager.ts'
 import { file, lines } from './util.ts'
 
 const PRESET_SUMMARY = {
@@ -55,7 +55,15 @@ function quickStart(o: ProjectOptions): string[] {
     steps.push(`${run('services:up')}     # starts the local database and services (Docker)`)
   if (hasServer(o)) steps.push(`${sv('migrate')}`, `${sv('db:seed')}`)
   steps.push(`${run('dev')}`)
-  return ['```bash', ...steps, '```']
+  const out = ['```bash', ...steps, '```']
+  const corepack = corepackRunner(o.packageManager)
+  if (corepack !== undefined) {
+    out.push(
+      '',
+      `\`${o.packageManager}\` not installed? Run the same commands through Corepack: \`${corepack} <command>\`.`,
+    )
+  }
+  return out
 }
 
 function commands(o: ProjectOptions): string[] {
@@ -113,6 +121,13 @@ function layout(o: ProjectOptions): string[] {
   rows.push(`- \`tests/\`: unit, feature${hasWeb(o) ? ' and browser (e2e)' : ''} tests`)
   rows.push('- `env.ts` / `env.schema.ts`: every environment variable, validated at startup')
   rows.push('- `strutvane.config.ts`: which Strutvane packages are active')
+  if (o.packageManager === 'pnpm') {
+    rows.push(
+      '- `pnpm-workspace.yaml`: pnpm settings: lets esbuild run its install step (pnpm blocks' +
+        ' dependency build scripts by default) and exempts Strutvane pre-releases from the minimum' +
+        ' release age',
+    )
+  }
   if (o.docker !== 'off') {
     rows.push(
       o.docker === 'local'

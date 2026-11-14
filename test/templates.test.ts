@@ -414,6 +414,41 @@ describe('docs and CI', () => {
   })
 })
 
+describe('pnpm-workspace.yaml (pnpm 12 settings)', () => {
+  test('pnpm projects approve exactly esbuild and exempt only Strutvane from the release age', () => {
+    for (const preset of ['full', 'api', 'ui'] as const) {
+      const yaml = contentOf({ name: 'a', preset, packageManager: 'pnpm' }, 'pnpm-workspace.yaml')
+      // The settings, verified against pnpm 12.18.0 (ERR_PNPM_IGNORED_BUILDS without allowBuilds).
+      expect(yaml).toContain('allowBuilds:\n  esbuild: true\n')
+      expect(yaml).toContain('minimumReleaseAgeExclude:\n  - "@strutvane/*"\n  - strutvane\n')
+      // Nothing else is approved or exempted, and it is not a monorepo.
+      const keys = yaml.split('\n').filter((l) => /^[A-Za-z]/.test(l))
+      expect(keys).toEqual(['allowBuilds:', 'minimumReleaseAgeExclude:'])
+      expect(yaml.match(/^ {2}\S/gm)).toHaveLength(3)
+      expect(yaml).not.toMatch(/^packages:/m)
+      // Every setting explains why.
+      expect(yaml).toContain('ADR-0018')
+      expect(yaml).toContain('build step')
+      expect(yaml.endsWith('\n')).toBe(true)
+    }
+  })
+
+  test.each(['npm', 'yarn', 'bun'] as const)('%s projects get no pnpm-workspace.yaml', (pm) => {
+    expect(pathsOf({ name: 'a', packageManager: pm })).not.toContain('pnpm-workspace.yaml')
+  })
+
+  test('the README lists the file and the Corepack fallback for pnpm only', () => {
+    const readme = contentOf({ name: 'a' }, 'README.md')
+    expect(readme).toContain('- `pnpm-workspace.yaml`: pnpm settings')
+    expect(readme).toContain(
+      `\`pnpm\` not installed? Run the same commands through Corepack: \`corepack pnpm@${VERSIONS.pnpm} <command>\`.`,
+    )
+    const npm = contentOf({ name: 'a', packageManager: 'npm' }, 'README.md')
+    expect(npm).not.toContain('pnpm-workspace.yaml')
+    expect(npm).not.toContain('corepack')
+  })
+})
+
 describe('package-manager commands', () => {
   test.each([
     ['pnpm', 'pnpm dev', 'pnpm sv migrate', 'pnpm install', 'pnpm install --frozen-lockfile'],

@@ -8,12 +8,11 @@
  *
  * @module
  */
-import { relative } from 'node:path'
 import * as clack from '@clack/prompts'
 import { ArgsError, helpText, parseArgs } from './args.ts'
 import { checkTarget, createProject, TargetNotEmptyError } from './generate.ts'
-import { hasServer, OptionsError, type ProjectOptions, resolveOptions } from './options.ts'
-import { installCommand, runScript, svCommand } from './package-manager.ts'
+import { nextSteps } from './next-steps.ts'
+import { OptionsError, resolveOptions } from './options.ts'
 import { type CommandRunner, runCommand, runPostSteps } from './post.ts'
 import { askMissing, CancelledError, clackPrompter, type Prompter } from './prompts.ts'
 
@@ -75,25 +74,6 @@ export function isCi(env: Readonly<Record<string, string | undefined>>): boolean
 
 /** Default project name for a non-interactive run without a folder. */
 export const DEFAULT_NAME = 'strutvane-app'
-
-/** Quote a path for a copy-paste shell command when it contains spaces. */
-function shellPath(path: string): string {
-  return /\s/.test(path) ? `"${path}"` : path
-}
-
-function nextSteps(options: ProjectOptions, cwd: string, installed: boolean): string {
-  const run = (s: string) => runScript(options.packageManager, s)
-  const steps = [`cd ${shellPath(relative(cwd, options.directory) || '.')}`]
-  if (!installed) steps.push(installCommand(options.packageManager))
-  if (options.docker !== 'off') steps.push(run('services:up'))
-  if (hasServer(options))
-    steps.push(
-      svCommand(options.packageManager, 'migrate'),
-      svCommand(options.packageManager, 'db:seed'),
-    )
-  steps.push(run('dev'))
-  return steps.join('\n')
-}
 
 /** Run the CLI. Returns the process exit code. */
 export async function main(argv: readonly string[], deps: MainDeps): Promise<number> {

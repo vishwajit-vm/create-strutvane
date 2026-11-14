@@ -325,6 +325,45 @@ function editorconfig(): GeneratedFile {
   )
 }
 
+/**
+ * `pnpm-workspace.yaml` for pnpm projects: pnpm's project settings file (there is no `packages`
+ * list, so the project is not a monorepo). Verified with pnpm 12.18.0:
+ *
+ * - `allowBuilds: { esbuild: true }`. pnpm 12 fails `pnpm install` with ERR_PNPM_IGNORED_BUILDS
+ *   when a dependency has a build script nobody approved. esbuild (pulled in by Vite and the
+ *   migration tooling) has one: its postinstall sets up the platform binary. Only esbuild is
+ *   approved; every other dependency's scripts stay blocked. An entry for a package that is not in
+ *   the tree is ignored, so the ui preset can share the file.
+ * - `minimumReleaseAgeExclude`. Strutvane pre-releases are staged and approved with 2FA
+ *   (ADR-0018), so a just-published train must install at once; every third-party package keeps
+ *   pnpm's "too new" protection. `@strutvane/*` does not match the unscoped `strutvane` CLI, so it
+ *   is listed too.
+ *
+ * Other package managers need no equivalent (checked 2026-11-14): npm 11 and Yarn run dependency
+ * build scripts; npm 12 skips unapproved ones with a warning only, and esbuild still works through
+ * its platform package (an optional dependency); Bun trusts esbuild by default (its built-in
+ * trusted-dependencies list).
+ */
+function pnpmWorkspace(): GeneratedFile {
+  return file(
+    'pnpm-workspace.yaml',
+    lines(
+      '# pnpm settings for this project (not a monorepo: there is no `packages` list).',
+      '',
+      '# esbuild (used by Vite and the migration tooling) sets up its platform binary in a',
+      '# build step. pnpm runs only the build scripts listed here; all others stay blocked.',
+      'allowBuilds:',
+      '  esbuild: true',
+      '',
+      '# Strutvane pre-releases are staged and approved with 2FA (ADR-0018), so they install as',
+      `# soon as they are published. Every third-party package keeps pnpm's "too new" protection.`,
+      'minimumReleaseAgeExclude:',
+      '  - "@strutvane/*"',
+      '  - strutvane',
+    ),
+  )
+}
+
 /** Every root-level file. */
 export function rootFiles(o: ProjectOptions): GeneratedFile[] {
   const out = [
@@ -339,5 +378,6 @@ export function rootFiles(o: ProjectOptions): GeneratedFile[] {
   // storage/ is ignored except this marker, so a fresh clone still has the folder.
   if (hasServer(o)) out.push(file('storage/.gitkeep', ''))
   if (hasWeb(o)) out.push(playwrightConfig(o))
+  if (o.packageManager === 'pnpm') out.push(pnpmWorkspace())
   return out
 }

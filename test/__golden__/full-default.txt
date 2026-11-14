@@ -257,6 +257,8 @@ pnpm sv db:seed
 pnpm dev
 ```
 
+`pnpm` not installed? Run the same commands through Corepack: `corepack pnpm@12.18.0 <command>`.
+
 The API runs on http://localhost:3000 (interactive API docs at http://localhost:3000/docs).
 
 ## Commands
@@ -291,6 +293,7 @@ command runs the same CLI for everything except `help`, which describes the laun
 - `tests/`: unit, feature and browser (e2e) tests
 - `env.ts` / `env.schema.ts`: every environment variable, validated at startup
 - `strutvane.config.ts`: which Strutvane packages are active
+- `pnpm-workspace.yaml`: pnpm settings: lets esbuild run its install step (pnpm blocks dependency build scripts by default) and exempts Strutvane pre-releases from the minimum release age
 - `docker/`: local services only, **git-ignored** (never deployed)
 - `.strutvane/`: generated files (registry, types, staging), git-ignored, except the upgrade state `lock.json`, `base/` and `templates/`, which are committed so `sv upgrade` works for the whole team
 - `storage/`: runtime files (logs, uploads), git-ignored
@@ -976,6 +979,20 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
   },
 })
+
+===== pnpm-workspace.yaml =====
+# pnpm settings for this project (not a monorepo: there is no `packages` list).
+
+# esbuild (used by Vite and the migration tooling) sets up its platform binary in a
+# build step. pnpm runs only the build scripts listed here; all others stay blocked.
+allowBuilds:
+  esbuild: true
+
+# Strutvane pre-releases are staged and approved with 2FA (ADR-0018), so they install as
+# soon as they are published. Every third-party package keeps pnpm's "too new" protection.
+minimumReleaseAgeExclude:
+  - "@strutvane/*"
+  - strutvane
 
 ===== storage/.gitkeep =====
 
