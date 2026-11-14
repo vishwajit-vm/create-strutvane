@@ -181,6 +181,11 @@ The UI runs on http://localhost:5173 and talks to the API set in `VITE_API_URL`.
 | `yarn lint` | Lint and format check (Biome) |
 | `yarn typecheck` | TypeScript check |
 | `yarn sv env:check` | Compare .env with .env.example |
+| `yarn sv help` | Every command of this project (built in and from installed packages) |
+
+`yarn sv <command>` runs the Strutvane CLI pinned in this project (`@strutvane/cli` in
+devDependencies), so its help lists your own and your packages' commands. A global `strutvane`
+command runs the same CLI for everything except `help`, which describes the launcher itself.
 
 ## Project layout
 
@@ -360,7 +365,7 @@ export const env = defineEnv(envSchema)
     "lint": "biome check .",
     "format": "biome check --write .",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web",
-    "sv": "strutvane"
+    "sv": "strutvane-cli"
   },
   "dependencies": {
     "@strutvane/core": "0.1.0-next.0",

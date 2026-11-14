@@ -128,6 +128,13 @@ function application(o: ProjectOptions): EnvSection {
   if (server) {
     vars.push(
       {
+        key: 'TRUST_PROXY',
+        value: '0',
+        kind: 'integer',
+        comment:
+          'Reverse proxies in front of the app whose X-Forwarded-For/-Proto headers are trusted: 0 = none (direct connections), 1 = one load balancer or ingress you run. Set it only behind a proxy you control: otherwise clients could fake their IP address (rate limits) and protocol',
+      },
+      {
         ...flag('APP_DEBUG', true, 'Detailed error pages. Only allowed with APP_ENV=local'),
         example: 'false',
       },

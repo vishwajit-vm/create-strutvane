@@ -24,6 +24,8 @@ APP_KEY=
 APP_URL=http://localhost:3000
 # Port the dev server listens on
 APP_PORT=3000
+# Reverse proxies in front of the app whose X-Forwarded-For/-Proto headers are trusted: 0 = none (direct connections), 1 = one load balancer or ingress you run. Set it only behind a proxy you control: otherwise clients could fake their IP address (rate limits) and protocol
+TRUST_PROXY=0
 # Detailed error pages. Only allowed with APP_ENV=local
 APP_DEBUG=false
 # Timezone for dates and schedules
@@ -259,6 +261,7 @@ Preset: `api`, database: `mysql`, auth: `email`, `google`, `github`, multi-tenan
 - Never commit `.env`, secrets, `storage/` or generated `.strutvane/` files (only its `lock.json`, `base/` and `templates/` are committed).
 - Log with the app logger, never `console.*`. Never log secrets or request bodies.
 - Authorization is deny-by-default: add a policy for every new model.
+- Roles: `admin`, `member`, `viewer`, `owner` (a tenant's creator, inside that tenant). The role map in `config/auth.ts` grants on top of the policies; a policy `deny` always wins.
 
 ## Before you finish a change
 
@@ -303,6 +306,11 @@ The API runs on http://localhost:3000 (interactive API docs at http://localhost:
 | `npm run sv -- migrate` | Generate and apply migrations from your models |
 | `npm run sv -- routes` | List every API route |
 | `npm run sv -- env:check` | Compare .env with .env.example |
+| `npm run sv -- help` | Every command of this project (built in and from installed packages) |
+
+`npm run sv -- <command>` runs the Strutvane CLI pinned in this project (`@strutvane/cli` in
+devDependencies), so its help lists your own and your packages' commands. A global `strutvane`
+command runs the same CLI for everything except `help`, which describes the launcher itself.
 
 ## Project layout
 
@@ -330,6 +338,7 @@ message if something is missing or invalid.
 | `APP_KEY` | _generated_ | Encryption key (32 random bytes). Rotate with: sv key:generate |
 | `APP_URL` | `http://localhost:3000` | Public URL of this app |
 | `APP_PORT` | `3000` | Port the dev server listens on |
+| `TRUST_PROXY` | `0` | Reverse proxies in front of the app whose X-Forwarded-For/-Proto headers are trusted: 0 = none (direct connections), 1 = one load balancer or ingress you run. Set it only behind a proxy you control: otherwise clients could fake their IP address (rate limits) and protocol |
 | `APP_DEBUG` | `false` (local `.env`: `true`) | Detailed error pages. Only allowed with APP_ENV=local |
 | `APP_TIMEZONE` | `UTC` | Timezone for dates and schedules |
 | `APP_LOCALE` | `en` | Default language for messages |
@@ -589,6 +598,10 @@ export default defineConfig({
   env: env.APP_ENV,
   url: env.APP_URL,
   port: env.APP_PORT,
+  /** The public origin behind any proxy (links, cookies, origin checks). */
+  publicUrl: env.APP_URL,
+  /** Reverse-proxy hops whose X-Forwarded-* headers are trusted (0 = none). */
+  trustProxy: env.TRUST_PROXY,
   debug: env.APP_DEBUG,
   timezone: env.APP_TIMEZONE,
   locale: env.APP_LOCALE,
@@ -599,10 +612,10 @@ export default defineConfig({
  * Authentication and authorization (@strutvane/auth).
  * Values come from the validated environment (env.ts); defaults live in .env.example.
  */
-import { defineConfig } from '@strutvane/core'
+import { defineAuthConfig } from '@strutvane/auth'
 import { env } from '../env.ts'
 
-export default defineConfig({
+export default defineAuthConfig({
   methods: ['email', 'google', 'github'],
   secret: env.AUTH_SECRET,
   session: { driver: env.AUTH_SESSION_DRIVER, idleMinutes: env.AUTH_SESSION_LIFETIME },
@@ -614,22 +627,24 @@ export default defineConfig({
     github: { clientId: env.AUTH_GITHUB_CLIENT_ID, clientSecret: env.AUTH_GITHUB_CLIENT_SECRET },
   },
   /**
-   * Default roles. Every model gets permissions like `invoice.viewAny`, `invoice.create`, …
-   * (`*` patterns match every model). `own: true` limits a permission to records whose `ownerId`
-   * is the signed-in user; a model without an `ownerId` field never matches it.
-   * Access is decided by app/policies/*.policy.ts (deny-by-default): keep their role names in
-   * line with these. Tenant admins can add custom roles later.
+   * Roles (enforced by @strutvane/auth together with app/policies/*.policy.ts: a policy
+   * `deny` always wins). Every model gets permissions like `invoice.viewAny`, `invoice.create`,
+   * …; `*` patterns match every model. `own: true` limits a permission to records whose
+   * `ownerId` is the signed-in user; a model without an `ownerId` field never matches it.
+   * `scope: 'global'` counts only outside tenants (platform administrators, like the seed admin),
+   * `scope: 'tenant'` only inside the user's active tenant, where `*` patterns reach only
+   * tenant-scoped models. Policies use the same role names.
    */
   roles: {
     admin: {
       permissions: [
         '*',
-        'user.viewAny',
-        'user.view',
-        'user.update',
-        'user.delete',
-        'auditEvent.viewAny',
-        'auditEvent.view',
+        { action: 'user.viewAny', scope: 'global' },
+        { action: 'user.view', scope: 'global' },
+        { action: 'user.update', scope: 'global' },
+        { action: 'user.delete', scope: 'global' },
+        { action: 'auditEvent.viewAny', scope: 'global' },
+        { action: 'auditEvent.view', scope: 'global' },
       ],
     },
     member: {
@@ -642,6 +657,7 @@ export default defineConfig({
       ],
     },
     viewer: { permissions: ['*.viewAny', '*.view'] },
+    owner: { scope: 'tenant', permissions: ['*'] },
   },
   /**
    * Identity, authorization, tenancy and audit records: no wildcard (not even admin `*`) ever
@@ -683,6 +699,16 @@ export default defineConfig({
   /** Roles a self-registered user gets (none: an admin grants them). */
   defaultRoles: [] as string[],
   seedAdmin: { email: env.SEED_ADMIN_EMAIL, password: env.SEED_ADMIN_PASSWORD, role: 'admin' },
+  /**
+   * Origins allowed to call the sign-in, sign-up and other state-changing auth endpoints.
+   * Add the origin of a UI served from another domain.
+   */
+  trustedOrigins: [env.APP_URL],
+  /**
+   * Proxy addresses or CIDRs whose X-Forwarded-For auth may use for rate limiting. Leave empty
+   * in a Strutvane app: TRUST_PROXY (config/app.ts) already resolves the client address.
+   */
+  trustedProxies: [] as string[],
   audit: { enabled: env.AUDIT_ENABLED },
 })
 
@@ -932,6 +958,7 @@ export const envSchema = z
     APP_KEY: z.string().min(32, 'must be a long random secret (32+ characters)'),
     APP_URL: z.url(),
     APP_PORT: z.coerce.number().int().min(1).max(65535),
+    TRUST_PROXY: z.coerce.number().int().min(0),
     APP_DEBUG: bool,
     APP_TIMEZONE: z.string().min(1),
     APP_LOCALE: z.string().min(1),
@@ -1055,7 +1082,7 @@ export const env = defineEnv(envSchema)
     "typecheck": "tsc --noEmit",
     "services:up": "docker compose --env-file .env -f docker/compose.yaml up -d --wait",
     "services:down": "docker compose --env-file .env -f docker/compose.yaml down",
-    "sv": "strutvane"
+    "sv": "strutvane-cli"
   },
   "dependencies": {
     "@opentelemetry/sdk-node": "0.301.2",
@@ -1122,6 +1149,7 @@ const valid = {
   APP_KEY: 'not-a-real-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
   APP_URL: 'http://localhost:3000',
   APP_PORT: '3000',
+  TRUST_PROXY: '0',
   APP_DEBUG: 'true',
   APP_TIMEZONE: 'UTC',
   APP_LOCALE: 'en',

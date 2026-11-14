@@ -2,7 +2,8 @@
  * Template-level behaviour: the documented layout per preset (docs/05 §3.1), the env spec, the
  * Zod mapping, package.json contents, and the small helpers.
  */
-import { resolve } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { allEnvVars, buildEnvSpec, sqlIdentifier } from '../src/env-spec.ts'
 import type { RawProjectInput } from '../src/options.ts'
@@ -15,7 +16,7 @@ import { envSchemaFile, zodFor } from '../src/templates/env.ts'
 import { dependencies, devDependencies, gitignore, scripts } from '../src/templates/root.ts'
 import { json, LINE_WIDTH, lines, quote, sortKeys } from '../src/templates/util.ts'
 import { STRUTVANE_VERSION, VERSIONS } from '../src/versions.ts'
-import { optionsFor } from './helpers.ts'
+import { optionsFor, PKG_ROOT } from './helpers.ts'
 
 const at = (input: RawProjectInput) => optionsFor(input, resolve('/work'))
 const pathsOf = (input: RawProjectInput) => renderProject(at(input)).files.map((f) => f.path)
@@ -306,7 +307,9 @@ describe('package.json', () => {
   test('scripts per preset', () => {
     expect(scripts(at({ name: 'a' }))).toMatchObject({
       dev: 'strutvane dev',
-      sv: 'strutvane',
+      // The project-local CLI, so `sv help` lists the project's commands (the launcher never
+      // delegates help).
+      sv: 'strutvane-cli',
       'test:e2e': 'playwright test',
     })
     expect(scripts(at({ name: 'a', preset: 'ui' }))).toMatchObject({
@@ -318,6 +321,24 @@ describe('package.json', () => {
     expect(api['test:e2e']).toBeUndefined()
     expect(api['services:up']).toBeUndefined()
     expect(api).toMatchObject({ typecheck: 'tsc --noEmit' })
+  })
+
+  // Drift check: the bin the sv script calls is the one @strutvane/cli publishes.
+  const cliManifest = join(PKG_ROOT, '..', 'cli', 'packages', 'cli', 'package.json')
+  test.skipIf(!existsSync(cliManifest))('sv calls the bin @strutvane/cli publishes', () => {
+    const manifest = JSON.parse(readFileSync(cliManifest, 'utf8')) as {
+      name: string
+      bin: Record<string, string>
+    }
+    expect(manifest.name).toBe('@strutvane/cli')
+    expect(Object.keys(manifest.bin)).toContain(scripts(at({ name: 'a' }))['sv'])
+    expect(devDependencies(at({ name: 'a' }))).toHaveProperty('@strutvane/cli')
+  })
+
+  test('the README explains sv and the global launcher', () => {
+    const readme = contentOf({ name: 'a' }, 'README.md')
+    expect(readme).toContain('| `pnpm sv help` |')
+    expect(readme).toContain('everything except `help`, which describes the launcher itself')
   })
 
   test('packageManager field only for pnpm', () => {

@@ -88,7 +88,10 @@ function commands(o: ProjectOptions): string[] {
       [sv('routes'), 'List every API route'],
     )
   }
-  rows.push([sv('env:check'), 'Compare .env with .env.example'])
+  rows.push(
+    [sv('env:check'), 'Compare .env with .env.example'],
+    [sv('help'), 'Every command of this project (built in and from installed packages)'],
+  )
   return [
     '| Command | What it does |',
     '|---|---|',
@@ -150,6 +153,10 @@ export function readmeFile(o: ProjectOptions, sections: readonly EnvSection[]): 
       '',
       ...commands(o),
       '',
+      `\`${svCommand(o.packageManager, '<command>')}\` runs the Strutvane CLI pinned in this project (\`@strutvane/cli\` in`,
+      "devDependencies), so its help lists your own and your packages' commands. A global `strutvane`",
+      'command runs the same CLI for everything except `help`, which describes the launcher itself.',
+      '',
       '## Project layout',
       '',
       ...layout(o),
@@ -206,6 +213,9 @@ export function claudeFile(o: ProjectOptions): GeneratedFile {
       hasServer(o) &&
         '- Log with the app logger, never `console.*`. Never log secrets or request bodies.',
       hasServer(o) && '- Authorization is deny-by-default: add a policy for every new model.',
+      hasServer(o) &&
+        o.auth.length > 0 &&
+        `- Roles: \`admin\`, \`member\`, \`viewer\`${o.tenancy ? ", `owner` (a tenant's creator, inside that tenant)" : ''}. The role map in \`config/auth.ts\` grants on top of the policies; a policy \`deny\` always wins.`,
       hasWeb(o) &&
         '- UI pages are generated from the API manifest. Override single pages in `web/pages/` rather than rewriting them.',
       '',

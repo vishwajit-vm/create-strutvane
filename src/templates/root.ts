@@ -79,7 +79,11 @@ export function devDependencies(o: ProjectOptions): Record<string, string> {
   return sortKeys(Object.fromEntries(entries))
 }
 
-/** package.json scripts. Server apps run through the `strutvane` CLI; the ui preset uses Vite. */
+/**
+ * package.json scripts. Server apps run through the `strutvane` launcher (which runs the CLI pinned
+ * in the project); `sv` calls that project-local CLI (`strutvane-cli`) directly. The ui preset uses
+ * Vite.
+ */
 export function scripts(o: ProjectOptions): Record<string, string> {
   const web = hasWeb(o)
   const server = hasServer(o)
@@ -94,7 +98,9 @@ export function scripts(o: ProjectOptions): Record<string, string> {
     ['typecheck', web ? 'tsc --noEmit && tsc --noEmit -p web' : 'tsc --noEmit'],
     ['services:up', o.docker !== 'off' && `${COMPOSE} up -d --wait`],
     ['services:down', o.docker !== 'off' && `${COMPOSE} down`],
-    ['sv', 'strutvane'],
+    // The project-local CLI (bin of @strutvane/cli), so `sv help` lists this project's commands.
+    // The global `strutvane` launcher keeps its own help and never delegates it.
+    ['sv', 'strutvane-cli'],
   ]
   return Object.fromEntries(entries.filter((e): e is [string, string] => e[1] !== false))
 }

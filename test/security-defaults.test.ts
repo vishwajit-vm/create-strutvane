@@ -18,6 +18,7 @@ import {
   excludedResources,
   NEW_MODEL_DEFAULTS,
   permissionSource,
+  ROLE_NAMES,
 } from '../src/auth-roles.ts'
 import { applyExampleValues, buildEnvSpec } from '../src/env-spec.ts'
 import type { RawProjectInput } from '../src/options.ts'
@@ -59,22 +60,32 @@ describe('role map (docs/07 §4.4)', () => {
     for (const role of ['member', 'viewer'] as const) {
       for (const p of defaultRoles(at({ name: 'a' }))[role]?.permissions ?? []) {
         if (typeof p === 'string') expect(p, role).not.toMatch(/^\*\.(update|delete|forceDelete)$/)
-        else expect(p.own, role).toBe(true)
+        else expect('own' in p && p.own, role).toBe(true)
       }
     }
   })
 
-  test("admin's exact grants are only for user management and audit reading", () => {
+  test("admin's exact grants are only for user management and audit reading, platform-wide only", () => {
     expect(sourceOf('admin').slice(1)).toEqual([
-      "'user.viewAny'",
-      "'user.view'",
-      "'user.update'",
-      "'user.delete'",
+      "{ action: 'user.viewAny', scope: 'global' }",
+      "{ action: 'user.view', scope: 'global' }",
+      "{ action: 'user.update', scope: 'global' }",
+      "{ action: 'user.delete', scope: 'global' }",
     ])
     expect(sourceOf('admin', { name: 'a', extras: ['audit'] }).slice(5)).toEqual([
-      "'auditEvent.viewAny'",
-      "'auditEvent.view'",
+      "{ action: 'auditEvent.viewAny', scope: 'global' }",
+      "{ action: 'auditEvent.view', scope: 'global' }",
     ])
+  })
+
+  test('with tenancy, a tenant creator gets owner: * inside that tenant only (docs/07 §2.7)', () => {
+    const roles = defaultRoles(at({ name: 'a', tenancy: true }))
+    expect(Object.keys(roles)).toEqual([...ROLE_NAMES])
+    expect(roles['owner']).toEqual({ scope: 'tenant', permissions: ['*'] })
+    expect(contentOf({ name: 'a', tenancy: true }, 'config/auth.ts')).toContain(
+      "    owner: { scope: 'tenant', permissions: ['*'] },",
+    )
+    expect(contentOf({ name: 'a' }, 'config/auth.ts')).not.toContain('owner:')
   })
 
   test('identity, authorization, tenancy and audit internals are excluded from wildcards', () => {
@@ -100,7 +111,7 @@ describe('role map (docs/07 §4.4)', () => {
   test('config/auth.ts renders the map, the exclusions and the defaults', () => {
     const auth = contentOf({ name: 'a', extras: ['audit'] }, 'config/auth.ts')
     expect(auth).toContain(
-      "    admin: {\n      permissions: [\n        '*',\n        'user.viewAny',",
+      "    admin: {\n      permissions: [\n        '*',\n        { action: 'user.viewAny', scope: 'global' },",
     )
     expect(auth).toContain(
       "    member: {\n      permissions: [\n        '*.viewAny',\n        '*.view',\n        '*.create',\n" +
@@ -113,6 +124,15 @@ describe('role map (docs/07 §4.4)', () => {
     expect(auth).toContain('  defaultRoles: [] as string[],')
     expect(auth).toContain("role: 'admin' }")
     expect(auth).toContain('  registration: env.AUTH_ALLOW_REGISTRATION,')
+  })
+
+  test('config/auth.ts is typed by defineAuthConfig and sets the request-hardening options', () => {
+    const auth = contentOf({ name: 'a' }, 'config/auth.ts')
+    expect(auth).toContain("import { defineAuthConfig } from '@strutvane/auth'")
+    expect(auth).toContain('export default defineAuthConfig({')
+    expect(auth).not.toContain('defineConfig(')
+    expect(auth).toContain('  trustedOrigins: [env.APP_URL],')
+    expect(auth).toContain('  trustedProxies: [] as string[],')
   })
 
   test('public sign-up is off by default', () => {
@@ -165,6 +185,33 @@ describe('.env.example safe defaults', () => {
   })
 })
 
+describe('reverse proxies are not trusted by default', () => {
+  test('config/app.ts reads publicUrl from APP_URL and trustProxy from TRUST_PROXY', () => {
+    const app = contentOf({ name: 'a' }, 'config/app.ts')
+    expect(app).toContain('  publicUrl: env.APP_URL,')
+    expect(app).toContain('  trustProxy: env.TRUST_PROXY,')
+    // The ui preset has no server, so no proxy settings.
+    expect(contentOf({ name: 'a', preset: 'ui' }, 'config/app.ts')).not.toContain('trustProxy')
+  })
+
+  test('TRUST_PROXY defaults to 0 (no proxy) and its comment says when to change it', () => {
+    const v = buildEnvSpec(at({ name: 'a' }))
+      .flatMap((s) => s.vars)
+      .find((x) => x.key === 'TRUST_PROXY')
+    expect(v).toMatchObject({ value: '0', kind: 'integer' })
+    expect(v?.example).toBeUndefined()
+    expect(v?.comment).toContain('only behind a proxy you control')
+    expect(contentOf({ name: 'a' }, 'env.schema.ts')).toContain(
+      'TRUST_PROXY: z.coerce.number().int().min(0),',
+    )
+    expect(
+      buildEnvSpec(at({ name: 'a', preset: 'ui' }))
+        .flatMap((s) => s.vars)
+        .some((x) => x.key === 'TRUST_PROXY'),
+    ).toBe(false)
+  })
+})
+
 describe('env.schema.ts refusals (executed with the real Zod)', () => {
   type Schema = { safeParse(v: unknown): { success: boolean } }
   let schema: Schema
@@ -194,6 +241,13 @@ describe('env.schema.ts refusals (executed with the real Zod)', () => {
 
   test('the local defaults are valid', () => {
     expect(ok({})).toBe(true)
+  })
+
+  test('TRUST_PROXY must be a non-negative whole number of hops', () => {
+    expect(ok({ TRUST_PROXY: '1' })).toBe(true)
+    expect(ok({ TRUST_PROXY: '-1' })).toBe(false)
+    expect(ok({ TRUST_PROXY: 'yes' })).toBe(false)
+    expect(ok({ TRUST_PROXY: '1.5' })).toBe(false)
   })
 
   test.each(['test', 'staging', 'production'])('refuses APP_DEBUG=true with APP_ENV=%s', (env) => {

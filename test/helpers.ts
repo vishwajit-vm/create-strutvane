@@ -5,7 +5,7 @@
 import { execFile } from 'node:child_process'
 import { lstat, mkdtemp, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { createProject } from '../src/generate.ts'
@@ -88,6 +88,9 @@ declare module '@strutvane/framework/provider' {
   const provider: object
   export default provider
 }
+declare module '@strutvane/auth' {
+  export function defineAuthConfig<const T extends object>(config: T): T
+}
 declare module '@strutvane/auth/provider' {
   const provider: object
   export default provider
@@ -147,6 +150,33 @@ export async function typecheck(dir: string): Promise<ToolResult> {
     return await tool(process.execPath, [BIN.tsc, '--noEmit', '-p', dir], dir)
   } finally {
     await rm(stubs, { force: true })
+  }
+}
+
+/**
+ * The built type declarations of the sibling `@strutvane/auth` checkout (local workspace layout
+ * only; it is unpublished, so the regular type-check uses a stub).
+ */
+export const AUTH_TYPES: string = join(PKG_ROOT, '..', 'auth', 'dist', 'index.d.mts')
+
+/**
+ * Type-check the generated `config/auth.ts` against the REAL `@strutvane/auth` types
+ * (`defineAuthConfig` rejects unknown keys and wrong value shapes), not the stub.
+ */
+export async function typecheckAuthConfig(dir: string): Promise<ToolResult> {
+  const config = join(dir, 'tsconfig.auth-check.json')
+  await writeFile(
+    config,
+    JSON.stringify({
+      extends: './tsconfig.json',
+      compilerOptions: { paths: { '@strutvane/auth': [AUTH_TYPES.split(sep).join('/')] } },
+      include: ['config/auth.ts'],
+    }),
+  )
+  try {
+    return await tool(process.execPath, [BIN.tsc, '--noEmit', '-p', config], dir)
+  } finally {
+    await rm(config, { force: true })
   }
 }
 

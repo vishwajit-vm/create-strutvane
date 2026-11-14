@@ -3,7 +3,8 @@
  * the real tools: golden output, TypeScript, Biome (format + lint), its own test suite, and the
  * .env / .env.example / env.schema.ts contract.
  */
-import { readFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { envKeys, looksSecret } from '@strutvane/devkit'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
@@ -12,11 +13,13 @@ import type { ProjectOptions } from '../src/options.ts'
 import { renderProject } from '../src/render.ts'
 import { COMBOS } from './combos.ts'
 import {
+  AUTH_TYPES,
   biomeCheck,
   generate,
   linkNodeModules,
   removeDir,
   typecheck,
+  typecheckAuthConfig,
   vitestRun,
 } from './helpers.ts'
 
@@ -90,6 +93,27 @@ describe.each(COMBOS)('$id', ({ id, input }) => {
     expect(result.output).toBe('')
     expect(result.code).toBe(0)
   })
+
+  // Local workspace only: config/auth.ts against the real (unpublished) @strutvane/auth types.
+  test.skipIf(!existsSync(AUTH_TYPES))(
+    'config/auth.ts type-checks against the real defineAuthConfig',
+    async () => {
+      if (options.auth.length === 0) return
+      await linkNodeModules(dir).catch(() => undefined) // already linked by the type-check test
+      const result = await typecheckAuthConfig(dir)
+      expect(result.output).toBe('')
+      expect(result.code).toBe(0)
+      // Negative control: the check has teeth (a misspelt key fails to compile).
+      const path = join(dir, 'config', 'auth.ts')
+      const source = await readFile(path, 'utf8')
+      await writeFile(path, source.replace('defineAuthConfig({', 'defineAuthConfig({ rolse: {},'))
+      try {
+        expect((await typecheckAuthConfig(dir)).code).not.toBe(0)
+      } finally {
+        await writeFile(path, source)
+      }
+    },
+  )
 
   test('passes Biome (format, lint, import order) with its own config', async () => {
     const result = await biomeCheck(dir)

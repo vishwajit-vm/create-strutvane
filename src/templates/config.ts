@@ -1,7 +1,8 @@
 /**
  * `config/*.ts`: typed, documented settings that read the validated env (docs/05 §3.3).
- * Each file uses `@strutvane/core`'s `defineConfig` (deep-frozen, typed paths). Only files relevant
- * to the chosen options are generated.
+ * Each file uses `@strutvane/core`'s `defineConfig` (deep-frozen, typed paths), except
+ * `config/auth.ts`, which uses `@strutvane/auth`'s `defineAuthConfig` (the same, plus a typed shape
+ * that rejects unknown keys). Only files relevant to the chosen options are generated.
  *
  * @module
  */
@@ -21,12 +22,14 @@ import { file, LINE_WIDTH, lines } from './util.ts'
  */
 function roleMap(o: ProjectOptions): string[] {
   const roles = Object.entries(defaultRoles(o)).flatMap(([name, role]) => {
-    const inline = `    ${name}: { permissions: [${role.permissions.map(permissionSource).join(', ')}] },`
+    const scope = role.scope ? `scope: '${role.scope}', ` : ''
+    const inline = `    ${name}: { ${scope}permissions: [${role.permissions.map(permissionSource).join(', ')}] },`
     // Exactly what Biome prints: one line when it fits, otherwise one permission per line.
     return inline.length <= LINE_WIDTH
       ? [inline]
       : [
           `    ${name}: {`,
+          ...(role.scope ? [`      scope: '${role.scope}',`] : []),
           '      permissions: [',
           ...role.permissions.map((p) => `        ${permissionSource(p)},`),
           '      ],',
@@ -39,11 +42,13 @@ function roleMap(o: ProjectOptions): string[] {
   ])
   return [
     '  /**',
-    '   * Default roles. Every model gets permissions like `invoice.viewAny`, `invoice.create`, …',
-    '   * (`*` patterns match every model). `own: true` limits a permission to records whose `ownerId`',
-    '   * is the signed-in user; a model without an `ownerId` field never matches it.',
-    '   * Access is decided by app/policies/*.policy.ts (deny-by-default): keep their role names in',
-    '   * line with these. Tenant admins can add custom roles later.',
+    '   * Roles (enforced by @strutvane/auth together with app/policies/*.policy.ts: a policy',
+    '   * `deny` always wins). Every model gets permissions like `invoice.viewAny`, `invoice.create`,',
+    '   * …; `*` patterns match every model. `own: true` limits a permission to records whose',
+    '   * `ownerId` is the signed-in user; a model without an `ownerId` field never matches it.',
+    "   * `scope: 'global'` counts only outside tenants (platform administrators, like the seed admin),",
+    "   * `scope: 'tenant'` only inside the user's active tenant, where `*` patterns reach only",
+    '   * tenant-scoped models. Policies use the same role names.',
     '   */',
     '  roles: {',
     ...roles,
@@ -62,12 +67,12 @@ function roleMap(o: ProjectOptions): string[] {
   ]
 }
 
-const header = (what: string) => [
+const header = (what: string, define = "import { defineConfig } from '@strutvane/core'") => [
   '/**',
   ` * ${what}`,
   ' * Values come from the validated environment (env.ts); defaults live in .env.example.',
   ' */',
-  "import { defineConfig } from '@strutvane/core'",
+  define,
   "import { env } from '../env.ts'",
   '',
 ]
@@ -83,6 +88,10 @@ function appConfig(o: ProjectOptions): GeneratedFile {
       '  env: env.APP_ENV,',
       '  url: env.APP_URL,',
       '  port: env.APP_PORT,',
+      server && '  /** The public origin behind any proxy (links, cookies, origin checks). */',
+      server && '  publicUrl: env.APP_URL,',
+      server && '  /** Reverse-proxy hops whose X-Forwarded-* headers are trusted (0 = none). */',
+      server && '  trustProxy: env.TRUST_PROXY,',
       server && '  debug: env.APP_DEBUG,',
       server && '  timezone: env.APP_TIMEZONE,',
       server && '  locale: env.APP_LOCALE,',
@@ -164,8 +173,12 @@ function authConfig(o: ProjectOptions): GeneratedFile | undefined {
   return file(
     'config/auth.ts',
     lines(
-      ...header('Authentication and authorization (@strutvane/auth).'),
-      'export default defineConfig({',
+      ...header(
+        'Authentication and authorization (@strutvane/auth).',
+        "import { defineAuthConfig } from '@strutvane/auth'",
+      ),
+      // Typed by @strutvane/auth: a misspelt key is a compile error instead of being ignored.
+      'export default defineAuthConfig({',
       `  methods: [${o.auth.map((m) => `'${m}'`).join(', ')}],`,
       '  secret: env.AUTH_SECRET,',
       '  session: { driver: env.AUTH_SESSION_DRIVER, idleMinutes: env.AUTH_SESSION_LIFETIME },',
@@ -177,6 +190,16 @@ function authConfig(o: ProjectOptions): GeneratedFile | undefined {
       social.length > 0 && '  },',
       ...roleMap(o),
       "  seedAdmin: { email: env.SEED_ADMIN_EMAIL, password: env.SEED_ADMIN_PASSWORD, role: 'admin' },",
+      '  /**',
+      '   * Origins allowed to call the sign-in, sign-up and other state-changing auth endpoints.',
+      '   * Add the origin of a UI served from another domain.',
+      '   */',
+      '  trustedOrigins: [env.APP_URL],',
+      '  /**',
+      '   * Proxy addresses or CIDRs whose X-Forwarded-For auth may use for rate limiting. Leave empty',
+      '   * in a Strutvane app: TRUST_PROXY (config/app.ts) already resolves the client address.',
+      '   */',
+      '  trustedProxies: [] as string[],',
       hasExtra(o, 'audit') && '  audit: { enabled: env.AUDIT_ENABLED },',
       '})',
     ),

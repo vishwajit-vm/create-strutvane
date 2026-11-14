@@ -30,7 +30,7 @@ It is one repo of the **Strutvane** polyrepo ecosystem (one GitHub repo per pack
 | `args.ts` | Hand-written flag parser (optional-value flags like `--docker[=mode]`). Parses only; `options.ts` validates. |
 | `prompts.ts` | `Prompter` interface + clack adapter; asks only what flags didn't give. Cancel → `CancelledError`. |
 | `env-spec.ts` | ONE description of the app's env vars, which drives `.env`, `.env.example`, `env.schema.ts` and the README table. |
-| `auth-roles.ts` | Default role map for `config/auth.ts` (docs/07 §4.4) and the resources wildcards never match. `test/security-defaults.test.ts` pins it to the spec. |
+| `auth-roles.ts` | Default role map for `config/auth.ts` (docs/07 §2.7, §4.4; enforced by `@strutvane/auth`): `admin` (user grants `scope: 'global'`), `member`, `viewer`, `owner` with tenancy (`scope: 'tenant'`), and the resources wildcards never match. `test/security-defaults.test.ts` pins it to the spec. |
 | `templates/*.ts` | Plain functions options → files (no template engine, no eval). `util.ts` has `lines`, a Biome-compatible `json`. |
 | `render.ts` | Assembles every template; pure; refuses duplicate paths. |
 | `generate.ts` | Writes through devkit's staged fs + env editor; target check, rollback/cleanup, dry run, show-once secrets. |
@@ -48,7 +48,8 @@ It is one repo of the **Strutvane** polyrepo ecosystem (one GitHub repo per pack
 - `.strutvane/`: `lock.json`, `base/`, `templates/` (and `README.md`) are committed, everything else ignored (ADR-0012). `.gitignore`, `.strutvane/README.md` and the generated docs must agree.
 - `docker/` is git-ignored unless `--docker=commit` (checked with `git check-ignore`).
 - Nothing is written before every question is answered; a non-empty target is never touched.
-- Unpublished packages (framework, auth, logs) and browser tooling are stubbed in `test/helpers.ts` (`STUBS`) for the type-check. Keep the stubs to exactly what templates use.
+- Unpublished packages (framework, auth, logs) and browser tooling are stubbed in `test/helpers.ts` (`STUBS`) for the type-check. Keep the stubs to exactly what templates use. In the local workspace layout, `config/auth.ts` is also type-checked against the real `../auth/dist` types (`typecheckAuthConfig`).
+- The `sv` script calls `strutvane-cli` (the project-local CLI) so `sv help` shows project commands; `test/templates.test.ts` checks that bin name against `../cli`.
 
 ## Boundaries (non-negotiable)
 
