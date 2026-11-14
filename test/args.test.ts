@@ -32,11 +32,18 @@ describe('parseArgs', () => {
     expect(a.input).toEqual({ directory: join(cwd, 'acme'), name: 'acme' })
   })
 
-  test('accepts Windows paths with spaces', () => {
+  // A backslash path is only a path on Windows; on Linux and macOS `\` is an ordinary filename
+  // character, so there the whole string is one (invalid) folder name, rejected later by
+  // validate-name. Hence the Windows case runs on Windows only.
+  test.skipIf(process.platform !== 'win32')('accepts Windows paths with spaces', () => {
     const a = parseArgs(['C:\\Users\\Ana Lee\\Projects\\acme'], 'C:\\')
     expect(a.input.name).toBe('acme')
-    if (process.platform === 'win32')
-      expect(a.input.directory).toBe('C:\\Users\\Ana Lee\\Projects\\acme')
+    expect(a.input.directory).toBe('C:\\Users\\Ana Lee\\Projects\\acme')
+  })
+
+  test('accepts absolute POSIX-style paths with spaces on every platform', () => {
+    const a = parseArgs(['/home/ana lee/projects/acme'], '/')
+    expect(a.input.name).toBe('acme')
   })
 
   test('value flags in both forms', () => {
