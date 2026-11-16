@@ -1,14 +1,16 @@
 /**
- * The whole generated project as a list of files: package.json, `strut.js`, env files, the
- * git-ignored Docker compose file, the README, the app sources, and the spike's stub framework.
+ * The whole generated project as a list of files: package.json, `.npmrc`, `strut.js`, env files,
+ * the git-ignored Docker compose file, the README, `strutvane.json` and the app sources.
  *
- * Pure function of the options: no disk, no clock, no randomness (secrets come later), so the same
- * answers always produce the same files and tests can compare them directly.
+ * Pure function of the options (and, for local package folders, of what those folders hold): no
+ * clock and no randomness (secrets come later), so the same answers always produce the same files
+ * and tests can compare them directly.
  *
  * @module
  */
-import { readFileSync } from 'node:fs'
-import { INSTALLED_FRAMEWORK_VERSION } from '../catalogue.ts'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
+import { catalogueRange, installerCatalogue } from '../catalogue.ts'
 import {
   answersOf,
   designInfo,
@@ -16,20 +18,35 @@ import {
   type ProjectOptions,
   SECRET_ANSWERS,
 } from '../options.ts'
+import { packageRoot } from '../package-root.ts'
 import { projectPackages } from '../question-registry.ts'
-import { VERSION } from '../version.ts'
+import {
+  ABSORBED_PACKAGES,
+  CORE_TRAIN,
+  DRIVERS,
+  FRAMEWORK_RANGE,
+  type PinnedPackage,
+  VERSION,
+  VITEST,
+} from '../version.ts'
 import { appFiles, type GeneratedFile } from './app-files.ts'
 import { dockerFiles } from './compose.ts'
 import { buildEnvSections, renderEnv, type TypedSecrets } from './env.ts'
 import { workflowFiles } from './workflow-files.ts'
 
-/** Where the static template files (strut.js, the stub framework) live. */
-const FILES = new URL('./files/', import.meta.url)
-
-/** Read one static template file. */
-function staticFile(relative: string): string {
-  return readFileSync(new URL(relative, FILES), 'utf8')
+/** How the files are rendered beyond the answers. */
+export interface RenderSettings {
+  /**
+   * A folder of local package folders (`strutvane-framework`, `strutvane-auth`, …) to use instead
+   * of the npm registry: for testing unreleased packages and for the ecosystem's umbrella
+   * workspace (`STRUT_LOCAL_PACKAGES`). Copied into the git-ignored `.strutvane/local/packages/`, so
+   * Docker mode sees them too. Never the default: a normal app installs from npm.
+   */
+  readonly localPackages?: string | undefined
 }
+
+/** Where local package copies live inside the project (git-ignored, under `.strutvane/local/`). */
+export const LOCAL_PACKAGES_FOLDER = '.strutvane/local/packages'
 
 /**
  * Every file of a new project, sorted by path.
@@ -37,115 +54,152 @@ function staticFile(relative: string): string {
  * @example
  * renderProject(options).find((f) => f.path === 'strut.js')
  */
-export function renderProject(options: ProjectOptions, typed: TypedSecrets = {}): GeneratedFile[] {
+export function renderProject(
+  options: ProjectOptions,
+  typed: TypedSecrets = {},
+  settings: RenderSettings = {},
+): GeneratedFile[] {
   const sections = buildEnvSections(options, typed)
   const files: GeneratedFile[] = [
-    { path: 'package.json', content: packageJson(options) },
-    // Shipped lockfile (security review F-12): the first install is `npm ci`, so it installs the
-    // tested versions, never whatever was published a minute ago.
-    { path: 'package-lock.json', content: lockfile(options) },
-    // Dependency install scripts never run unless listed in package.json "strutvane.rebuild".
-    { path: '.npmrc', content: 'ignore-scripts=true\n' },
-    { path: 'strut.js', content: staticFile('strut.js') },
-    // Machine-local (git-ignored): tells strut.js whether to forward commands into Docker.
-    { path: '.strutvane/env.json', content: envJson(options) },
+    { path: 'package.json', content: packageJson(options, settings) },
+    { path: '.npmrc', content: NPMRC },
+    { path: 'strut.js', content: strutJs() },
     { path: '.env', content: renderEnv(sections, { example: false }) },
     { path: '.env.example', content: renderEnv(sections, { example: true }) },
     { path: '.gitignore', content: GITIGNORE },
     { path: 'README.md', content: readme(options) },
-    // Every answer (never a secret), so `node strut install:<name>` later knows what was picked.
+    // Every answer (never a secret), so `node strut install:<name>` later knows what was picked,
+    // and a fresh clone can be set up from this file alone (decision #9).
     { path: 'strutvane.json', content: strutvaneJson(options) },
     ...(options.agents ? [{ path: 'AGENTS.md', content: agents(options) }] : []),
-    ...stubPackages(options),
     ...appFiles(options),
     ...workflowFiles(options),
     ...dockerFiles(options),
+    ...(settings.localPackages === undefined
+      ? []
+      : localPackageFiles(settings.localPackages, packagesFor(options))),
   ]
   return files.sort((a, b) => a.path.localeCompare(b.path))
 }
 
-/** The stub dependency's version (the lockfile and its package.json must agree). */
-const STUB_VERSION = '0.0.0-spike'
-
-/** The driver package each server database needs (SQLite uses Node's built-in node:sqlite). */
-const DRIVERS = Object.freeze({ mysql: 'mysql2', postgres: 'pg' } as const)
-
-/** One locked package entry, as npm writes it in package-lock.json. */
-type LockEntry = Readonly<Record<string, unknown>>
-
-/** The pre-resolved driver lock fragments (see files/driver-locks.json for how they were made). */
-interface DriverLocks {
-  readonly drivers: Readonly<
-    Record<
-      string,
-      { readonly version: string; readonly packages: Readonly<Record<string, LockEntry>> }
-    >
-  >
-}
-
-/** Read the driver lock fragments once. */
-function driverLocks(): DriverLocks {
-  return JSON.parse(staticFile('driver-locks.json')) as DriverLocks
+/** The project's `strut.js`, shipped as a plain file in the package's `templates/` folder. */
+export function strutJs(): string {
+  return readFileSync(join(packageRoot(), 'templates', 'strut.js'), 'utf8')
 }
 
 /**
- * The database driver dependency for these options, pinned exactly, or none for SQLite.
+ * The database driver dependency for these options, pinned exactly, or none for SQLite (the
+ * framework uses Node's built-in `node:sqlite`).
  *
  * @example
  * driverDependency(options) // { name: 'mysql2', version: '3.24.6' }
  */
-export function driverDependency(
-  options: ProjectOptions,
-): { readonly name: string; readonly version: string } | undefined {
-  if (options.database === 'sqlite') return undefined
-  const name = DRIVERS[options.database]
-  const locked = driverLocks().drivers[name]
-  if (locked === undefined) throw new Error(`No locked version of ${name} in driver-locks.json`)
-  return { name, version: locked.version }
+export function driverDependency(options: ProjectOptions): PinnedPackage | undefined {
+  return options.database === 'sqlite' ? undefined : DRIVERS[options.database]
 }
 
 /**
- * Where the spike's stand-in for a package lives: `@strutvane/design-crisp` →
- * `stubs/strutvane-design-crisp`. Every package is pinned the same way (a local `file:` stub), so
- * `npm ci` keeps working offline; a release pins the real packages exactly, like the drivers.
+ * The folder name of a package (`@strutvane/design-crisp` → `strutvane-design-crisp`), used for
+ * local package copies.
  *
  * Why the strict check: the name becomes a folder. Registry names are fixed and catalogue names
  * are checked when the index is read, but a path must never be built from an unchecked string.
  *
  * @example
- * stubFolder('@strutvane/design-crisp') // 'stubs/strutvane-design-crisp'
+ * packageFolder('@strutvane/design-crisp') // 'strutvane-design-crisp'
  */
-export function stubFolder(packageName: string): string {
+export function packageFolder(packageName: string): string {
   if (
     !/^(@strutvane\/[a-z0-9][a-z0-9-]{0,49}|strutvane-[a-z0-9][a-z0-9-]{0,49})$/.test(packageName)
   ) {
     throw new Error(`Refusing an unexpected package name: ${packageName}`)
   }
-  return `stubs/${packageName.replace(/^@/, '').replace('/', '-')}`
+  return packageName.replace(/^@/, '').replace('/', '-')
 }
 
 /**
  * Every package the answers bring (read from the question registry's data, never a hard-coded
  * list), the framework first.
+ *
+ * @example
+ * packagesFor(options) // ['@strutvane/framework', '@strutvane/auth', '@strutvane/design-crisp', ...]
  */
 export function packagesFor(options: ProjectOptions): string[] {
   return projectPackages(answersOf(options))
 }
 
-/** The app's dependencies: every Strutvane package (local stubs in the spike), and the driver. */
-function dependencies(options: ProjectOptions): Record<string, string> {
+/**
+ * The version range of one Strutvane package: the core train's range for the packages released
+ * with this installer, otherwise the newest compatible catalogue version.
+ */
+function rangeOf(name: string, options: ProjectOptions): string {
+  if (CORE_TRAIN.includes(name)) return FRAMEWORK_RANGE
+  const entry = installerCatalogue().entries.find((candidate) => candidate.package === name)
+  if (entry === undefined) throw new Error(`${name} is not in the package catalogue`)
+  return catalogueRange(entry, { preview: options.previewCatalogue })
+}
+
+/**
+ * The app's dependencies: `@strutvane/framework`, the packages the answers bring, and the
+ * database driver. Never an absorbed package (core, contracts, cli, devkit, logs): one of those
+ * would install a second kernel (integration finding C1), so meeting one is a bug, not a choice.
+ *
+ * @example
+ * dependencies(options)['@strutvane/framework'] // '^0.1.0-next.1'
+ */
+export function dependencies(
+  options: ProjectOptions,
+  settings: RenderSettings = {},
+): Record<string, string> {
   const result: Record<string, string> = {}
-  for (const name of packagesFor(options)) result[name] = `file:${stubFolder(name)}`
+  for (const name of packagesFor(options)) {
+    if (ABSORBED_PACKAGES.includes(name)) {
+      throw new Error(`${name} was merged into @strutvane/framework and must never be installed`)
+    }
+    result[name] =
+      settings.localPackages === undefined
+        ? rangeOf(name, options)
+        : `file:./${LOCAL_PACKAGES_FOLDER}/${packageFolder(name)}`
+  }
   const driver = driverDependency(options)
   if (driver !== undefined) result[driver.name] = driver.version
   return result
 }
 
 /**
+ * The files of each local package folder, copied under {@link LOCAL_PACKAGES_FOLDER}. A missing
+ * folder stops the run before anything is written (fail closed: never a half-local project).
+ */
+function localPackageFiles(source: string, names: readonly string[]): GeneratedFile[] {
+  return names.flatMap((name) => {
+    const folder = join(source, packageFolder(name))
+    let entries: string[]
+    try {
+      entries = readdirSync(folder, { recursive: true, encoding: 'utf8' })
+    } catch {
+      throw new Error(`STRUT_LOCAL_PACKAGES has no ${packageFolder(name)} folder for ${name}`)
+    }
+    return entries
+      .filter((entry) => !entry.split(/[\\/]/).includes('node_modules'))
+      .flatMap((entry) => {
+        let content: string
+        try {
+          content = readFileSync(join(folder, entry), 'utf8')
+        } catch {
+          return [] // a folder
+        }
+        const inside = relative(folder, join(folder, entry)).split('\\').join('/')
+        return [{ path: `${LOCAL_PACKAGES_FOLDER}/${packageFolder(name)}/${inside}`, content }]
+      })
+  })
+}
+
+/**
  * `strutvane.json`: the installer's answers, committed with the app. `node strut install:<name>`
- * and `node strut add` read it to know what was picked. Built from the resolved options, which
- * never hold a secret; the typed passwords are removed again anyway, so a future option can
- * never leak one here by accident.
+ * and `node strut add` read it to know what was picked, `strut.js` reads the Docker choice from it
+ * (decision #110), and `npm run setup` sets up a fresh clone from it (decision #9). Built from the
+ * resolved options, which never hold a secret; the typed passwords are removed again anyway, so
+ * a future option can never leak one here by accident.
  */
 function strutvaneJson(options: ProjectOptions): string {
   const { directory: _directory, ...rest } = options
@@ -154,7 +208,7 @@ function strutvaneJson(options: ProjectOptions): string {
   const manifest = {
     version: 1,
     createdWith: `create-strutvane ${VERSION}`,
-    framework: INSTALLED_FRAMEWORK_VERSION,
+    framework: FRAMEWORK_RANGE,
     answers,
     packages: packagesFor(options),
   }
@@ -162,138 +216,61 @@ function strutvaneJson(options: ProjectOptions): string {
 }
 
 /**
- * `.strutvane/env.json`: how this copy of the project runs. strut.js reads it to decide whether to
- * forward commands into the app container (Docker mode) or run them here.
+ * The npm guards every generated app gets (integration finding L5; the same guards the Strutvane
+ * repos use). npm >= 11.19 understands them; `devEngines` in package.json makes an older npm stop
+ * instead of silently ignoring them.
  */
-function envJson(options: ProjectOptions): string {
-  return `${JSON.stringify({ mode: options.docker ? 'docker' : 'host', composeFile: 'docker/compose.yaml', service: 'app' }, null, 2)}
+export const NPMRC = `# npm supply-chain guards (written by create-strutvane; npm >= 11.19). Keep them.
+#
+# Dependency install scripts never run on install. A package that really needs one is listed in
+# package.json "allowScripts" ("name@version": true) and \`npm run setup\` rebuilds just those.
+ignore-scripts=true
+# If scripts are ever switched on, only the allowScripts list may run; anything else fails.
+strict-allow-scripts=true
+# Third-party versions must be at least a day old: most malicious releases are caught and pulled
+# within hours. Strutvane's own releases are staged and approved with 2FA, so they are exempt.
+min-release-age=1
+min-release-age-exclude[]=@strutvane/*
+# No dependencies straight from git (they skip the registry's integrity checks).
+allow-git=none
+# The Node version in package.json "engines" is enforced.
+engine-strict=true
 `
-}
 
-/**
- * The shipped `package-lock.json`. In the spike it pins the local stub; a release ships one tested
- * lockfile per preset, built from versions at least 3 days old.
- */
-function lockfile(options: ProjectOptions): string {
-  const lock = {
-    name: options.name,
-    version: '0.1.0',
-    lockfileVersion: 3,
-    requires: true,
-    packages: {
-      '': {
-        name: options.name,
-        version: '0.1.0',
-        dependencies: dependencies(options),
-        engines: { node: '>=24.3' },
-      },
-      ...stubLockEntries(options),
-      ...driverPackages(options),
-    },
-  }
-  return `${JSON.stringify(lock, null, 2)}\n`
-}
-
-/** Each stub's lock entries: a link from node_modules to its local folder, and the folder itself. */
-function stubLockEntries(options: ProjectOptions): Record<string, LockEntry> {
-  const entries: Record<string, LockEntry> = {}
-  for (const name of packagesFor(options)) {
-    entries[`node_modules/${name}`] = { resolved: stubFolder(name), link: true }
-    entries[stubFolder(name)] = { name, version: STUB_VERSION }
-  }
-  return entries
-}
-
-/** The locked packages of the chosen driver (resolved URLs and integrity hashes from npm). */
-function driverPackages(options: ProjectOptions): Record<string, LockEntry> {
-  const driver = driverDependency(options)
-  if (driver === undefined) return {}
-  return { ...driverLocks().drivers[driver.name]?.packages }
-}
-
-/** AGENTS.md: the short playbook AI coding agents read first (table stakes since Laravel 13). */
-function agents(options: ProjectOptions): string {
-  return `# AGENTS.md
-
-This is a Strutvane app (TypeScript, MVC, npm only). Read this before changing code.
-
-- Run project commands with \`node strut <command>\` (\`node strut help\` lists them). Never use pnpm or yarn.
-- Columns live in migrations (\`database/migrations\`). Add a column with a new migration, then \`node strut migrate\`.
-- Controllers: \`app/http/controllers\`. Models: \`app/models\`. Policies: \`app/policies\` (deny by default).
-- Routes: \`routes/web.ts\` (pages) and \`routes/api.ts\` (served under /api/v1).
-- Settings come from \`.env\` (never commit it). \`.env.example\` lists every key without secrets.
-- ${options.docker ? 'Docker mode: every `node strut` command runs inside the app container (`node strut services:up` / `services:down`).' : 'Runs on this computer (no Docker).'} Database: ${options.database}.
-- Before you finish: \`npm test\`.
-`
-}
-
-/**
- * The spike's stand-ins for the Strutvane packages, installed from local folders (`file:`), so
- * `npm install` really runs but downloads nothing. `@strutvane/framework` carries the working stub
- * (migrations, seeders, `node strut`); every other package only names itself, which is enough to
- * prove the dependency list installs. The real packages replace these folders.
- */
-function stubPackages(options: ProjectOptions): GeneratedFile[] {
-  return packagesFor(options).flatMap((name): GeneratedFile[] => {
-    const folder = stubFolder(name)
-    const framework = name === '@strutvane/framework'
-    const manifest = {
-      name,
-      version: STUB_VERSION,
-      private: true,
-      type: 'module',
-      exports: framework ? { '.': './index.js', './cli': './cli.js' } : { '.': './index.js' },
-    }
-    const files: GeneratedFile[] = [
-      { path: `${folder}/package.json`, content: `${JSON.stringify(manifest, null, 2)}\n` },
-    ]
-    if (framework) {
-      files.push(
-        { path: `${folder}/index.js`, content: staticFile('stub-framework/index.js') },
-        { path: `${folder}/cli.js`, content: staticFile('stub-framework/cli.js') },
-        { path: `${folder}/db.js`, content: staticFile('stub-framework/db.js') },
-      )
-    } else {
-      files.push({
-        path: `${folder}/index.js`,
-        content: `// SPIKE STUB of ${name} (spike 13). The real package replaces this folder.\nexport const stub = ${JSON.stringify(name)}\n`,
-      })
-    }
-    return files
-  })
-}
-
-/** package.json with the scripts from the design (§3.6): everything goes through `node strut`. */
-function packageJson(options: ProjectOptions): string {
+/** package.json with the scripts from the design: everything goes through `node strut`. */
+function packageJson(options: ProjectOptions, settings: RenderSettings): string {
   const scripts: Record<string, string> = {
     dev: 'node strut dev',
     build: 'node strut build',
     start: 'node build/server.js',
-    test: 'node strut test',
   }
-  if (options.testing === 'vitest-playwright') scripts['test:e2e'] = 'playwright test'
-  // `npm install` first, so a fresh clone needs only this one command.
+  if (options.testing !== 'none') scripts['test'] = 'vitest run'
   // strut.js runs setup itself (no dependencies needed), so a fresh clone works too.
   scripts['setup'] = 'node strut setup'
   scripts['strut'] = 'node strut'
+  const devDependencies: Record<string, string> =
+    options.testing === 'none' ? {} : { [VITEST.name]: VITEST.version }
   const manifest = {
     name: options.name,
     version: '0.1.0',
     private: true,
     type: 'module',
     engines: { node: '>=24.3' },
+    // npm older than 11.19 ignores the .npmrc guards without a word: stop it instead.
+    devEngines: { packageManager: { name: 'npm', version: '>=11.19.0', onFail: 'error' } },
     scripts,
-    dependencies: dependencies(options),
-    // The only dependencies whose install scripts may run (after `npm ci --ignore-scripts`, setup
-    // runs `npm rebuild <these>`). A release lists the few that need it, e.g. "esbuild".
-    strutvane: { rebuild: [] },
+    dependencies: dependencies(options, settings),
+    devDependencies,
+    // The only dependencies whose install scripts may run ("name@version": true); setup rebuilds
+    // them after the script-free install. Empty: nothing the app needs has one.
+    allowScripts: {},
   }
   return `${JSON.stringify(manifest, null, 2)}\n`
 }
 
 /**
- * The generated `.gitignore`. The setup's git step checks with `git check-ignore` that every one
- * of these is really ignored before the first commit (security review F-17).
+ * The generated `.gitignore`. The setup's git step checks with `git check-ignore` that the
+ * secret and local-data paths are really ignored before the first commit (security review F-17).
  */
 const GITIGNORE = `node_modules/
 build/
@@ -306,11 +283,36 @@ build/
 # .devcontainer/ is different: committed when you choose it (ADR-0021).
 docker/
 
-# Local data and installer state (SQLite -wal/-shm/-journal files hold data too)
+# Local data (SQLite -wal/-shm/-journal files hold data too)
 database/*.sqlite*
 storage/
-.strutvane/
+
+# Machine-local Strutvane state: setup progress, logs, per-computer overrides. The rest of
+# .strutvane/ (generated types, resources, the API client) is committed, so a fresh clone
+# type-checks (decision #10).
+.strutvane/local/
 `
+
+/** AGENTS.md: the short playbook AI coding agents read first. */
+function agents(options: ProjectOptions): string {
+  const tests =
+    options.testing === 'none'
+      ? 'There is no test runner yet: add Vitest (`npm install -D vitest`) before relying on tests.'
+      : 'Tests use Vitest (`tests/`). Before you finish: `npm test`.'
+  return `# AGENTS.md
+
+This is a Strutvane app (TypeScript, MVC, npm only). Read this before changing code.
+
+- Run project commands with \`node strut <command>\` (\`node strut list\` shows them all). Never use pnpm or yarn.
+- Columns live in migrations (\`database/migrations\`). Add a column with a new migration, then \`node strut migrate\`.
+- Controllers: \`app/http/controllers\`. Models: \`app/models\`. Policies: \`app/policies\` (\`user.policy.ts\`; deny by default).
+- Factories and seeders: \`database/factories\` (\`user.factory.ts\`) and \`database/seeders\`; \`database.seeder.ts\` lists them between the \`strut:seeders\` markers.
+- Routes: \`routes/web.ts\` (pages) and \`routes/api.ts\` (served under /api). Health check: \`GET /up\`.
+- Settings come from \`.env\` (never commit it). \`.env.example\` lists every key without secrets.
+- ${options.docker ? 'Docker mode: every `node strut` command runs inside the app container (`node strut services:up` / `services:down`).' : 'Runs on this computer (no Docker).'} Database: ${options.database}.
+- ${tests}
+`
+}
 
 /** The README: the three commands a user needs, first. */
 function readme(options: ProjectOptions): string {
@@ -321,18 +323,19 @@ function readme(options: ProjectOptions): string {
         '',
         'Everything runs in containers (like Laravel Sail): the app on node:24, the database and Mailpit',
         '(inbox: http://localhost:8025). `node strut <command>` on your computer runs the command inside the',
-        'app container, so the three commands above work the same: `npm run dev` (API, UI dev server, queue',
-        'worker, scheduler), `migrate` and every other command run in the container.',
+        'app container, so the three commands above work the same: `npm run dev`, `migrate` and every other',
+        'command run in the container. Your computer only needs Node to run the small `strut.js` forwarder.',
         '',
         '```text',
         'node strut shell            a shell inside the app container (bash, or sh when there is none)',
         'node strut npm install x    npm inside the container (also: node strut npx ..., node strut node ...)',
         'node strut services:down    stop the containers (your data stays); services:up starts them',
+        "node strut services:logs    follow the containers' logs; db:shell opens the database shell",
         '```',
         '',
         'Arguments are passed as they are (no shell in between) and the exit code comes back to you.',
-        '`docker/compose.yaml` is local only and git-ignored (ADR-0006). On Windows, keep the project inside',
-        'WSL2 for fast file watching.',
+        '`docker/compose.yaml` is local only and git-ignored (ADR-0006). `services:down --volumes` deletes',
+        'the database, so it asks first. On Windows, keep the project inside WSL2 for fast file watching.',
         '',
       ].join('\n')
     : ''
@@ -344,17 +347,17 @@ A Strutvane app.
 
 \`\`\`text
 npm run dev        start the app on http://localhost:3000 (port from .env)
-node strut help    every project command (make:model, migrate, db:seed, ...)
+node strut list    every project command (make:model, migrate, db:seed, ...)
 npm run setup      after git clone, or to finish a setup that stopped
 \`\`\`
 ${docker}
 ## Where things are
 
 - \`app/\`: controllers (\`app/http/controllers\`), models, policies
-- \`routes/web.ts\`, \`routes/api.ts\`: routes
+- \`routes/web.ts\`, \`routes/api.ts\`: routes (the API is served under \`/api\`; \`GET /up\` is the health check)
 - \`database/\`: migrations, seeders, factories
 - \`config/\`: settings (values come from \`.env\`)
-${options.ui !== undefined ? '- `resources/ui/`: the React UI\n' : ''}- \`strutvane.json\`: what you picked in the installer (read by \`node strut install:<name>\`)
+${options.ui !== undefined ? '- `resources/ui/`: the React UI\n' : ''}- \`strutvane.json\`: what you picked in the installer (read by \`node strut install:<name>\` and \`npm run setup\`)
 ${signInSection(options)}${designSection(options)}${deploySection(options)}`
 }
 
@@ -367,7 +370,11 @@ function signInSection(options: ProjectOptions): string {
       : options.auth === 'magic-link'
         ? `People sign in with a single-use link sent by email (valid 15 minutes). First admin: ${admin}.`
         : `People sign in with email and password. First admin: ${admin}\n(\`node strut user:password <email>\` sets a new one-time password).`
-  return `\n## Sign-in\n\n${text}\n`
+  const features =
+    options.auth === 'none'
+      ? ''
+      : '\nThe sign-in features you picked are switched on in `config/auth.ts`.\n'
+  return `\n## Sign-in\n\n${text}\n${features}`
 }
 
 /** Where the deploy recipe and the opt-in container files are. */

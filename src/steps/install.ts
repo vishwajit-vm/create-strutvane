@@ -20,7 +20,7 @@ import { envValue } from './env-io.ts'
 import { failed, type Step, type StepContext, type StepOutcome } from './types.ts'
 
 /** What kind of npm failure the output shows. */
-export type InstallProblem = 'network' | 'locked' | 'registry' | 'other'
+export type InstallProblem = 'network' | 'locked' | 'registry' | 'npm-version' | 'other'
 
 /**
  * Classify an npm failure from its output.
@@ -31,6 +31,7 @@ export type InstallProblem = 'network' | 'locked' | 'registry' | 'other'
 export function classifyInstallFailure(output: string): InstallProblem {
   if (/\b(ETIMEDOUT|ECONNRESET|EAI_AGAIN|ENOTFOUND|ECONNREFUSED)\b/.test(output)) return 'network'
   if (/\b(EPERM|EBUSY)\b/.test(output)) return 'locked'
+  if (/\bEBADDEVENGINES\b/.test(output)) return 'npm-version'
   if (/\b(E401|E403|SELF_SIGNED_CERT_IN_CHAIN|UNABLE_TO_GET_ISSUER_CERT_LOCALLY)\b/.test(output))
     return 'registry'
   return 'other'
@@ -43,6 +44,8 @@ const HINTS: Readonly<Record<InstallProblem, string>> = {
     'A file in node_modules is locked (antivirus or an open editor). Close programs using the folder.',
   registry:
     'The registry refused the request. Check `npm config get registry` and your npm login or proxy certificate.',
+  'npm-version':
+    'This app needs npm 11.19 or newer (its supply-chain guards need it). Update npm: npm install --global npm@11',
   other: 'npm install failed.',
 }
 
@@ -59,8 +62,11 @@ export function installArgs(hasLockfile: boolean): string[] {
 }
 
 /**
- * The packages allowed to run install scripts: `package.json` → `"strutvane": { "rebuild": [...] }`.
- * Anything that is not a plain package name is ignored (it ends up as an npm argument).
+ * The packages allowed to run install scripts: package.json `"allowScripts"`, npm's own list
+ * (`"name@version": true`; `false` records a refusal). The generated `.npmrc` sets
+ * `ignore-scripts` and `strict-allow-scripts`, so nothing runs on install and only these are
+ * rebuilt afterwards. Anything that is not a plain package name is ignored (it becomes an npm
+ * argument).
  *
  * @example
  * rebuildAllowlist('C:/code/my-app') // ['esbuild']
@@ -73,14 +79,13 @@ export function rebuildAllowlist(directory: string): string[] {
     return []
   }
   if (typeof manifest !== 'object' || manifest === null) return []
-  const settings = Reflect.get(manifest, 'strutvane')
-  const list =
-    typeof settings === 'object' && settings !== null ? Reflect.get(settings, 'rebuild') : undefined
-  if (!Array.isArray(list)) return []
-  return list.filter(
-    (name): name is string =>
-      typeof name === 'string' && /^(@[a-z0-9._-]+\/)?[a-z0-9._-]+$/.test(name),
-  )
+  const allowed = Reflect.get(manifest, 'allowScripts')
+  if (typeof allowed !== 'object' || allowed === null || Array.isArray(allowed)) return []
+  const names = Object.entries(allowed)
+    .filter(([, value]) => value === true)
+    .map(([key]) => key.replace(/(.)@[^@/]+$/, '$1'))
+    .filter((name) => /^(@[a-z0-9._-]+\/)?[a-z0-9._-]+$/.test(name))
+  return [...new Set(names)]
 }
 
 /** Run the install once: inside the app container in Docker mode, else here. */
@@ -178,7 +183,7 @@ export const installStep: Step = {
       return failed(
         'install-failed',
         `npm rebuild ${rebuildAllowlist(context.directory).join(' ')} failed (exit code ${rebuild.code}).`,
-        `A package on the "strutvane.rebuild" list could not run its install script. Full log: ${context.logFile}`,
+        `A package on the package.json "allowScripts" list could not run its install script. Full log: ${context.logFile}`,
         lastLines(rebuild.output, 20),
       )
     }

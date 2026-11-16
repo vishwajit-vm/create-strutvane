@@ -52,7 +52,7 @@ describe('no shell, no shims', () => {
     expect(result).toMatchObject({ code: -1, notFound: true })
   })
 
-  it('installs with npm ci --ignore-scripts (shipped lockfile), never running dependency scripts', () => {
+  it('installs without dependency scripts: npm install the first time, npm ci once the lockfile exists', () => {
     expect(installArgs(true)).toEqual(['ci', '--ignore-scripts', '--no-audit', '--no-fund'])
     expect(installArgs(false)[0]).toBe('install')
   })

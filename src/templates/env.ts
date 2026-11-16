@@ -65,7 +65,7 @@ export const DEFAULT_PORTS: Readonly<{ app: 3000; mailpit: 8025; mysql: 3306; po
  * Every key the secrets step must fill for these options.
  *
  * @example
- * secretKeys(options) // ['APP_KEY', 'DB_PASSWORD', 'DB_ROOT_PASSWORD', 'AUTH_SECRET']
+ * secretKeys(options) // ['APP_KEY', 'DB_PASSWORD', 'DB_ROOT_PASSWORD']
  */
 export function secretKeys(options: ProjectOptions): string[] {
   return buildEnvSections(options)
@@ -87,7 +87,6 @@ export function buildEnvSections(options: ProjectOptions, typed: TypedSecrets = 
     mail(options),
     docker(options),
     auth(options),
-    teams(options),
     ai(options),
   ]
   return sections.filter((section): section is EnvSection => section !== undefined)
@@ -103,6 +102,13 @@ function application(options: ProjectOptions): EnvSection {
       { key: 'APP_DEBUG', value: 'true', example: 'false' },
       { key: 'APP_URL', value: `http://localhost:${DEFAULT_PORTS.app}` },
       { key: 'APP_PORT', value: String(DEFAULT_PORTS.app) },
+      // The sites that may call the API with cookies (config/cors.ts checks it and names this key
+      // when it is empty or wrong). The example is a placeholder to replace, https as production needs.
+      {
+        key: 'CORS_ORIGINS',
+        value: `http://localhost:${DEFAULT_PORTS.app}`,
+        example: 'https://app.example.com',
+      },
     ],
   }
 }
@@ -205,21 +211,15 @@ function docker(options: ProjectOptions): EnvSection | undefined {
   }
 }
 
+/**
+ * The first admin's address (sign-in only). Its password is never stored here (security review
+ * F-18), and the sign-in features are not env keys: they live in config/auth.ts (decision #26).
+ */
 function auth(options: ProjectOptions): EnvSection | undefined {
   if (options.auth === 'none') return undefined
-  const has = (feature: string) => String(options.security.some((f) => f === feature))
   return {
-    title: 'Auth',
-    vars: [
-      { key: 'AUTH_SECRET', value: '', secret: true },
-      { key: 'AUTH_MODE', value: options.auth },
-      { key: 'AUTH_REGISTRATION', value: has('registration') },
-      { key: 'AUTH_EMAIL_VERIFICATION', value: has('verification') },
-      { key: 'AUTH_TWO_FACTOR', value: has('2fa') },
-      { key: 'AUTH_PASSKEYS', value: has('passkeys') },
-      // The first admin's address. Its password is never stored here (security review F-18).
-      { key: 'SEED_ADMIN_EMAIL', value: options.adminEmail ?? `admin@${options.name}.test` },
-    ],
+    title: 'First admin',
+    vars: [{ key: 'SEED_ADMIN_EMAIL', value: options.adminEmail ?? `admin@${options.name}.test` }],
   }
 }
 
@@ -242,11 +242,6 @@ function ai(options: ProjectOptions): EnvSection | undefined {
       },
     ],
   }
-}
-
-function teams(options: ProjectOptions): EnvSection | undefined {
-  if (!options.teams) return undefined
-  return { title: 'Teams', vars: [{ key: 'TENANCY_ENABLED', value: 'true' }] }
 }
 
 /**

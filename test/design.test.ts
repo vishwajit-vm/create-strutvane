@@ -19,6 +19,7 @@ import { askMissing, pruneAnswers, review, reviewLines } from '../src/questions.
 import { loadState } from '../src/setup-state.ts'
 import { findSwallowedFlags } from '../src/swallowed-flags.ts'
 import { renderProject } from '../src/templates/project.ts'
+import { FRAMEWORK_RANGE } from '../src/version.ts'
 import { fakeEnvironment, scriptedPrompter, tempFolder } from './helpers/fakes.ts'
 import { fakePrograms } from './helpers/programs.ts'
 
@@ -175,31 +176,20 @@ describe('review screen', () => {
 
 describe('generated files per design', () => {
   it.each(DESIGN_NAMES)(
-    '%s: package.json dependency, lockfile link, stub, config/ui.ts, theme.css and README',
+    '%s: package.json dependency (the core-train range), config/ui.ts, theme.css and README',
     (design: Design) => {
       const project = renderProject(options({ design }))
       const other = DESIGN_NAMES.find((name) => name !== design)
       const packageName = `@strutvane/design-${design}`
 
-      // Pinned like @strutvane/framework: a local stub link that the shipped lockfile matches.
+      // Released with the framework (the core train), so it uses the framework's range.
       const manifest = JSON.parse(file(project, 'package.json')) as {
         dependencies: Record<string, string>
       }
-      expect(manifest.dependencies[packageName]).toBe(`file:stubs/strutvane-design-${design}`)
+      expect(manifest.dependencies[packageName]).toBe(FRAMEWORK_RANGE)
       expect(
         Object.keys(manifest.dependencies).filter((name) => name.startsWith('@strutvane/design-')),
       ).toEqual([packageName])
-      const lock = JSON.parse(file(project, 'package-lock.json')) as {
-        packages: Record<string, Record<string, unknown>>
-      }
-      expect(lock.packages['']?.['dependencies']).toEqual(manifest.dependencies)
-      expect(lock.packages[`node_modules/${packageName}`]).toEqual({
-        resolved: `stubs/strutvane-design-${design}`,
-        link: true,
-      })
-      expect(
-        JSON.parse(file(project, `stubs/strutvane-design-${design}/package.json`)),
-      ).toMatchObject({ name: packageName })
 
       const config = file(project, 'config/ui.ts')
       expect(config).toContain(`design: '${design}',`)
@@ -226,7 +216,6 @@ describe('generated files per design', () => {
     const paths = project.map((f) => f.path)
     expect(paths).not.toContain('config/ui.ts')
     expect(paths).not.toContain('resources/ui/theme.css')
-    expect(paths.some((p) => p.startsWith('stubs/strutvane-design-'))).toBe(false)
     expect(file(project, 'package.json')).not.toContain('design-')
     expect(file(project, 'README.md')).not.toContain('## Design')
   })
@@ -246,9 +235,7 @@ describe('--yes path (no questions)', () => {
     const manifest = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as {
       dependencies: Record<string, string>
     }
-    expect(manifest.dependencies['@strutvane/design-crisp']).toBe(
-      'file:stubs/strutvane-design-crisp',
-    )
+    expect(manifest.dependencies['@strutvane/design-crisp']).toBe(FRAMEWORK_RANGE)
     expect(readFileSync(join(directory, 'config', 'ui.ts'), 'utf8')).toContain("design: 'crisp',")
     expect(existsSync(join(directory, 'resources', 'ui', 'theme.css'))).toBe(true)
     expect(loadState(directory).options.design).toBe('crisp')

@@ -69,7 +69,9 @@ describe('npm install failures', () => {
     })
     expect(result.code).toBe(0)
     expect(result.output()).toMatch(/could not reach the registry\. .*Retrying once/)
-    expect(result.world.calls.filter((call) => describeCall(call) === 'npm ci')).toHaveLength(2)
+    expect(result.world.calls.filter((call) => describeCall(call) === 'npm install')).toHaveLength(
+      2,
+    )
   })
 
   it('waits and retries once on a Windows file lock (EPERM)', async () => {
@@ -108,7 +110,7 @@ describe('npm install failures', () => {
     const resumed = await resume(failing.directory, {}, { isPortFree: async () => ++probes > 0 })
     expect(resumed.code).toBe(0)
     expect(probes).toBe(0) // the ports step was done: not run again
-    expect(resumed.world.calls.map(describeCall)[0]).toBe('npm ci')
+    expect(resumed.world.calls.map(describeCall)[0]).toBe('npm install')
     expect(Object.values(statusOf(failing.directory)).every((status) => status === 'done')).toBe(
       true,
     )
@@ -167,11 +169,11 @@ describe('Docker failures', () => {
     })
     // strut.js stops forwarding into a container, and install/migrate ran on this computer.
     expect(
-      JSON.parse(readFileSync(join(result.directory, '.strutvane', 'env.json'), 'utf8')).mode,
-    ).toBe('host')
+      JSON.parse(readFileSync(join(result.directory, 'strutvane.json'), 'utf8')).answers.docker,
+    ).toBe(false)
     expect(env.get('MAIL_MAILER')).toBe('log')
-    expect(result.world.calls.map(describeCall)).toContain('npm ci')
-    expect(result.world.calls.map(describeCall)).not.toContain('app: npm ci')
+    expect(result.world.calls.map(describeCall)).toContain('npm install')
+    expect(result.world.calls.map(describeCall)).not.toContain('app: npm install')
   })
 
   it('Docker stopped (interactive): Retry after starting it', async () => {
@@ -351,9 +353,9 @@ describe('migrate and git failures', () => {
       git: 'done',
     })
     expect(result.env().get('DB_PASSWORD')).toBe('Hunter-77-pw') // typed once, kept in .env only
-    expect(readFileSync(join(result.directory, '.strutvane', 'setup.json'), 'utf8')).not.toContain(
-      'Hunter-77-pw',
-    )
+    expect(
+      readFileSync(join(result.directory, '.strutvane', 'local', 'setup.json'), 'utf8'),
+    ).not.toContain('Hunter-77-pw')
   })
 
   it('database unreachable during migrate (CI): exit 2 with what to do', async () => {
@@ -442,7 +444,7 @@ describe('resume safety', () => {
 
   it('refuses a damaged setup.json with a fix', async () => {
     const done = await create(['--yes', '--db', 'sqlite'])
-    writeFileSync(join(done.directory, '.strutvane', 'setup.json'), '{ not json')
+    writeFileSync(join(done.directory, '.strutvane', 'local', 'setup.json'), '{ not json')
     const resumed = await resume(done.directory)
     expect(resumed.code).toBe(1)
     expect(resumed.output()).toMatch(

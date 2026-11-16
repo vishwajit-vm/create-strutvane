@@ -7,6 +7,7 @@
 import { join } from 'node:path'
 import { parseEnv } from './env-file.ts'
 import {
+  type Answers,
   answersOf,
   DATABASE_LABELS,
   type Design,
@@ -14,8 +15,8 @@ import {
   otherDesign,
   type ProjectOptions,
 } from './options.ts'
-import { QUESTIONS } from './question-registry.ts'
-import type { StepId } from './setup-state.ts'
+import { QUESTIONS, type Question } from './question-registry.ts'
+import { STATE_FILE, type StepId } from './setup-state.ts'
 import { readEnvFile } from './steps/env-io.ts'
 import type { ShowOnce } from './steps/types.ts'
 
@@ -30,10 +31,21 @@ import type { ShowOnce } from './steps/types.ts'
  */
 export function equivalentCommand(options: ProjectOptions): string {
   const answers = answersOf(options)
-  const words = QUESTIONS.filter((q) => q.id !== 'mode' && q.when(answers)).flatMap((q) =>
-    q.flagWords(answers),
-  )
-  return `npm create strutvane@latest ${options.name} -- ${[...words, '--yes'].join(' ')}`
+  const words = QUESTIONS.filter(
+    (q) => q.id !== 'mode' && q.when(answers) && (q.visible(answers) || !isDefault(q, answers)),
+  ).flatMap((q) => q.flagWords(answers))
+  const preview = options.previewCatalogue ? ['--preview-catalogue'] : []
+  return `npm create strutvane@latest ${options.name} -- ${[...words, ...preview, '--yes'].join(' ')}`
+}
+
+/**
+ * Does a hidden question hold its default? Then the command leaves it out: it would only repeat
+ * what the installer picks anyway, and hidden questions are about packages not released yet.
+ */
+function isDefault(question: Question, answers: Answers): boolean {
+  const rest: Record<string, unknown> = { ...answers }
+  delete rest[question.id]
+  return question.flagWords(answers).join(' ') === question.flagWords(rest).join(' ')
 }
 
 /**
@@ -111,7 +123,7 @@ export function readyLines(
   lines.push(
     '',
     `${'Every day:'.padEnd(13)}cd ${options.name}; npm run dev`,
-    `${'Commands:'.padEnd(13)}node strut help`,
+    `${'Commands:'.padEnd(13)}node strut list`,
     ...(options.design === undefined ? [] : [restyleLine(options.design)]),
     `${'Teammates:'.padEnd(13)}npm run setup   (after git clone)`,
     '',
@@ -130,7 +142,7 @@ export function readyLines(
 export function unfinishedLines(options: ProjectOptions, unfinished: readonly StepId[]): string[] {
   return [
     `The project is in ${options.directory}, but these steps are not done: ${unfinished.join(', ')}.`,
-    `Progress is saved in ${join('.strutvane', 'setup.json')}. Fix the cause shown above, then run:`,
+    `Progress is saved in ${join(...STATE_FILE)}. Fix the cause shown above, then run:`,
     '',
     `  cd ${options.name}; npm run setup`,
     '',

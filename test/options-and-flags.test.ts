@@ -22,7 +22,8 @@ describe('defaults (user decisions 2026-11-14 + security review)', () => {
       auth: 'email',
       // 2FA and email verification on; public registration OFF (security review F-02).
       security: ['2fa', 'verification'],
-      features: ['log-viewer'],
+      // The log viewer is the default extra, but it is not published yet, so nothing is added (#3).
+      features: [],
       teams: false,
       database: 'mysql',
       docker: true,
@@ -148,7 +149,7 @@ describe('flags: one for every question (CI mode)', () => {
       'postgres',
       '--no-docker',
       '--testing',
-      'vitest-playwright',
+      'none',
       '--no-git',
       '--yes',
       '--no-dev',
@@ -165,7 +166,7 @@ describe('flags: one for every question (CI mode)', () => {
       teams: true,
       database: 'postgres',
       docker: false,
-      testing: 'vitest-playwright',
+      testing: 'none',
       git: false,
     })
   })

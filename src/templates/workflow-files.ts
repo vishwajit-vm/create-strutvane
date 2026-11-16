@@ -130,7 +130,7 @@ services:
 /** The deploy recipe for the chosen target (plain steps; the platform holds the secrets). */
 function deployRecipe(options: ProjectOptions): string {
   const common = `Settings come from environment variables set in your host's dashboard (the keys are listed in
-\`.env.example\`). Never upload \`.env\`. The app answers \`GET /up\` with "up" for health checks.`
+\`.env.example\`). Never upload \`.env\`. The app answers \`GET /up\` with \`{"status":"ok"}\` for health checks.`
   if (options.deploy === 'docker') {
     return `# Deploy ${options.name} as a Docker image
 
@@ -175,9 +175,9 @@ function dockerfile(options: ProjectOptions): string {
 # 1. Build: install everything (dev dependencies too) and compile to build/.
 FROM ${node} AS build
 WORKDIR /app
+# Inside a container: strut.js runs commands here instead of forwarding them (Docker mode).
+ENV STRUTVANE_IN_CONTAINER=1
 COPY package.json package-lock.json .npmrc ./
-# Spike only: the local stand-ins for the @strutvane packages (the release installs from npm).
-COPY stubs/ ./stubs/
 RUN npm ci --ignore-scripts
 COPY . .
 RUN node strut build
@@ -186,18 +186,19 @@ RUN node strut build
 FROM ${node} AS deps
 WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
-COPY stubs/ ./stubs/
 RUN npm ci --omit=dev --ignore-scripts
 
 # 3. Run: only build/ and production dependencies, as the image's non-root "node" user. The files
 #    stay owned by root, so the app cannot change its own code (it also runs with --read-only).
 FROM ${node}
 ENV NODE_ENV=production
+# Logs go to stderr as JSON lines, where container platforms collect them (ADR-0022, decision #7).
+ENV LOG_CHANNEL=stderr
+ENV LOG_FORMAT=json
 # Listen on the container's network; you decide where it is published (docker run -p ...).
 ENV APP_HOST=0.0.0.0
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/stubs ./stubs
 COPY --from=build /app/build ./build
 COPY package.json ./
 USER node
@@ -222,7 +223,7 @@ tests/
 **/*.spec.ts
 # Local-only things that have no place in an image.
 docker/
-.strutvane/
+.strutvane/local/
 .devcontainer/
 .vscode/
 database/*.sqlite*

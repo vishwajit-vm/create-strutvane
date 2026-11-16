@@ -1,15 +1,29 @@
-// SPIKE STUB of @strutvane/framework (spike 13). Just enough for the installer's end-to-end test:
-// migrations with a tiny Laravel-style schema builder (spike 10 owns the real one), seeders, and an
-// application object for `node strut dev`. The real package replaces this folder.
+// TEST STAND-IN for @strutvane/framework (create-strutvane's end-to-end tests only; never
+// published). Just enough of the framework's documented shapes for a generated app to migrate,
+// seed and serve: migrations with a tiny Laravel-style schema builder, defineSeeder/defineFactory,
+// Model(), and Application.configure() for `node strut dev`. The real package replaces it.
 
 /** Declare a migration: `export default migration({ up(schema) {...}, down(schema) {...} })`. */
 export function migration(definition) {
   return definition
 }
 
-/** Declare a seeder: `export default seeder(async (db) => { await db.insertOrIgnore(...) })`. */
-export function seeder(run) {
-  return { run }
+/** Declare a seeder: `export default defineSeeder({ after?, async run({ db, env, call }) {} })`. */
+export function defineSeeder(definition) {
+  return definition
+}
+
+/** Declare a factory: `export default defineFactory(User, ({ faker, sequence }) => ({ ... }))`. */
+export function defineFactory(model, define) {
+  return { model, define }
+}
+
+/** A model class for a table: `class User extends Model('users', { fillable }) {}`. */
+export function Model(table, options = {}) {
+  return class {
+    static table = table
+    static options = options
+  }
 }
 
 /** Column types per dialect. Each entry: [sqlite, mysql, postgres]. */
@@ -144,8 +158,31 @@ export function createSchema(dialect) {
   }
 }
 
+/** Laravel 11's fluent bootstrap: Application.configure({ basePath }).withRouting(...).create(). */
+export const Application = {
+  configure() {
+    let routing = {}
+    const builder = {
+      withRouting(settings) {
+        routing = settings
+        return builder
+      },
+      withMiddleware() {
+        return builder
+      },
+      withExceptions() {
+        return builder
+      },
+      create() {
+        return createApplication({ routes: routing, health: routing.health })
+      },
+    }
+    return builder
+  },
+}
+
 /** The app object `bootstrap/app.ts` exports; `node strut dev` serves it. */
-export function createApplication({ routes }) {
+function createApplication({ routes, health }) {
   const table = new Map()
   const routerFor = (prefix) => ({
     get(path, handler) {
@@ -153,11 +190,13 @@ export function createApplication({ routes }) {
     },
   })
   if (routes.web) routes.web(routerFor(''))
-  if (routes.api) routes.api(routerFor('/api/v1'))
+  if (routes.api) routes.api(routerFor('/api'))
+  // The built-in health route (decision #45): JSON for GET, and HEAD answers too.
+  if (health) table.set(`GET ${health}`, () => ({ status: 'ok' }))
   return {
     /** Find and run a handler; returns `{ status, body }`. */
     async handle(method, path) {
-      const handler = table.get(`${method} ${path}`)
+      const handler = table.get(`${method === 'HEAD' ? 'GET' : method} ${path}`)
       if (!handler) return { status: 404, body: { title: 'Not Found', status: 404 } }
       return { status: 200, body: await handler() }
     },

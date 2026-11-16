@@ -6,7 +6,7 @@
  * - `.env` and `.env.example`: `DB_CONNECTION=sqlite`, the SQLite file paths, mail to the log, and
  *   the server/Docker-only keys commented out (Laravel does the same for SQLite), so nothing is
  *   lost if the user switches back later;
- * - `.strutvane/env.json`: mode `host`, so `node strut` stops forwarding into a container;
+ * - `strutvane.json`: docker false, so `node strut` stops forwarding into a container;
  * - removes the git-ignored `docker/` folder (it would start containers nobody uses);
  * - rewrites README.md and AGENTS.md, which describe how the app runs;
  * - the stored options: `database: 'sqlite'`, `docker: false`.
@@ -42,12 +42,7 @@ const SERVER_KEYS = [
 ] as const
 
 /** Files regenerated for the new mode (they describe how the app runs; none holds user edits yet). */
-const REGENERATED: ReadonlySet<string> = new Set([
-  'README.md',
-  'AGENTS.md',
-  '.strutvane/env.json',
-  'strutvane.json',
-])
+const REGENERATED: ReadonlySet<string> = new Set(['README.md', 'AGENTS.md', 'strutvane.json'])
 
 /** Point one env file at SQLite. */
 function sqliteEnv(text: string): string {

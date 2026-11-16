@@ -17,10 +17,15 @@
 import {
   type Catalogue,
   type CatalogueEntry,
+  type FollowUpQuestion,
   findOffered,
+  followUpApplies,
+  followUpProblem,
   installerCatalogue,
   offeredEntries,
+  packageAvailability,
   popularGroups,
+  resolveFollowUps,
 } from './catalogue.ts'
 import { envValueProblem } from './env-file.ts'
 import { sqlIdentifier } from './names.ts'
@@ -143,6 +148,16 @@ export interface Question {
   packages(answers: Answers): readonly string[]
   /** Drop parts of the answer that an earlier change made stale (default: nothing to drop). */
   tidy(answers: Answers): Answers
+  /**
+   * Is the question shown (asked, reviewed, offered under "Change an answer")? It applies, and it
+   * still offers a real choice once choices that need an unreleased package are removed
+   * (decision #3: a question that brings a package appears when that package is published).
+   */
+  visible(answers: Answers): boolean
+  /** Why the given answer cannot be used: it needs a package that is not available (#109). */
+  availabilityProblem(answers: Answers): string | undefined
+  /** The answers with this question's effective answer moved off an unavailable package. */
+  settle(answers: Answers): Answers
 }
 
 // ── Building blocks shared by the factories ──────────────────────────────────────────────────
@@ -201,8 +216,34 @@ function base(id: AnswerKey, spec: Common, flag: Omit<FlagSpec, 'name' | 'help' 
     when: spec.when ?? always,
     answered: (answers: Answers) => answers[id] !== undefined,
     tidy: (answers: Answers) => answers,
+    visible: spec.when ?? always,
+    availabilityProblem: (): string | undefined => undefined,
+    settle: (answers: Answers) => answers,
   }
 }
+
+/** `--preview-catalogue`: unreleased packages count as available. */
+const previewOf = (answers: Answers): boolean => answers.previewCatalogue === true
+
+/**
+ * Why these packages cannot be installed now (the first reason), or `undefined` when they can.
+ *
+ * @example
+ * unavailableReason(['@strutvane/redis'], {}) // "@strutvane/redis isn't available yet (planned for 0.3). ..."
+ */
+export function unavailableReason(
+  packages: readonly string[],
+  answers: Answers,
+): string | undefined {
+  for (const name of packages) {
+    const availability = packageAvailability(name, { preview: previewOf(answers) })
+    if (!availability.available) return availability.reason
+  }
+  return undefined
+}
+
+const allAvailable = (packages: readonly string[] | undefined, answers: Answers): boolean =>
+  unavailableReason(packages ?? [], answers) === undefined
 
 /** One choice out of a list. */
 interface SelectSpec<T extends string> extends Common {
@@ -227,6 +268,9 @@ function select<K extends AnswerKey>(id: K, spec: SelectSpec<Value<K> & string>)
     choices()
       .map((c) => c.value)
       .join(', ')
+  const available = (answers: Answers): readonly OptionChoice<T>[] =>
+    choices().filter((choice) => allAvailable(choice.packages, answers))
+  const when = spec.when ?? always
   return {
     // The flag is a getter: choices may be computed from the finished registry (the opener counts
     // questions), so they must not be read while the registry array is still being built.
@@ -247,7 +291,7 @@ function select<K extends AnswerKey>(id: K, spec: SelectSpec<Value<K> & string>)
         await prompter.select({
           id,
           message: messageOf(spec, answers),
-          options: choices(),
+          options: available(answers),
           initialValue: effective(answers).value,
         }),
       )
@@ -269,14 +313,29 @@ function select<K extends AnswerKey>(id: K, spec: SelectSpec<Value<K> & string>)
     },
     flagWords: (answers) => [`--${spec.flag}`, effective(answers).value],
     packages: (answers) => effective(answers).packages ?? [],
+    visible: (answers) => when(answers) && available(answers).length >= 2,
+    availabilityProblem: (answers) =>
+      answers[id] === undefined
+        ? undefined
+        : unavailableReason(find(answers[id])?.packages ?? [], answers),
+    settle: (answers) => {
+      if (allAvailable(effective(answers).packages, answers)) return answers
+      const first = available(answers)[0]
+      return first === undefined ? answers : put(answers, id, first.value)
+    },
   }
 }
 
 /** Yes or no. Shown as a select with two worded choices when `asSelect` is given (Docker). */
 interface ConfirmSpec extends Common {
   readonly default: (answers: Answers) => boolean
-  /** Packages a "yes" brings. */
+  /** Packages a "yes" needs (the yes choice is unavailable until they are published). */
   readonly packages?: readonly string[]
+  /**
+   * Packages a "yes" adds when they are published. Until then "yes" still works without them
+   * (AGENTS.md is the installer's own file) but the question is not shown (decision #3).
+   */
+  readonly optionalPackages?: readonly string[]
   /** Review wording for yes and no (default: "yes" / "no"). */
   readonly words?: readonly [string, string]
   readonly asSelect?: (answers: Answers) => {
@@ -292,6 +351,8 @@ function confirm<K extends BoolKey>(id: K, spec: ConfirmSpec): Question {
   }
   const effective = (answers: Answers): boolean => current(answers) ?? spec.default(answers)
   const [yesWord, noWord] = spec.words ?? ['yes', 'no']
+  const when = spec.when ?? always
+  const yesAvailable = (answers: Answers): boolean => allAvailable(spec.packages, answers)
   return {
     ...base(id, spec, {
       type: 'boolean',
@@ -327,7 +388,19 @@ function confirm<K extends BoolKey>(id: K, spec: ConfirmSpec): Question {
       return put({}, id, raw)
     },
     flagWords: (answers) => [effective(answers) ? `--${spec.flag}` : `--no-${spec.flag}`],
-    packages: (answers) => (effective(answers) ? (spec.packages ?? []) : []),
+    packages: (answers) =>
+      effective(answers)
+        ? [
+            ...(spec.packages ?? []),
+            ...(spec.optionalPackages ?? []).filter((name) => allAvailable([name], answers)),
+          ]
+        : [],
+    visible: (answers) =>
+      when(answers) && yesAvailable(answers) && allAvailable(spec.optionalPackages, answers),
+    availabilityProblem: (answers) =>
+      current(answers) === true ? unavailableReason(spec.packages ?? [], answers) : undefined,
+    settle: (answers) =>
+      effective(answers) && !yesAvailable(answers) ? put(answers, id, false) : answers,
   }
 }
 
@@ -360,6 +433,11 @@ function multi<K extends AnswerKey>(id: K, spec: MultiSpec<Item<K>>): Question {
     return choice?.short ?? choice?.label ?? value
   }
   const listHint = spec.itemHint ?? spec.choices.map((c) => c.value).join(', ')
+  const packagesOf = (value: T): readonly string[] =>
+    spec.choices.find((c) => c.value === value)?.packages ?? []
+  const available = (answers: Answers): readonly OptionChoice<T>[] =>
+    spec.choices.filter((choice) => allAvailable(choice.packages, answers))
+  const when = spec.when ?? always
   return {
     ...base(id, spec, {
       type: 'string',
@@ -376,7 +454,7 @@ function multi<K extends AnswerKey>(id: K, spec: MultiSpec<Item<K>>): Question {
         await prompter.multiselect({
           id,
           message: messageOf(spec, answers),
-          options: [...spec.choices, ...extra],
+          options: [...available(answers), ...extra],
           initialValues: chosen,
         }),
       )
@@ -411,13 +489,14 @@ function multi<K extends AnswerKey>(id: K, spec: MultiSpec<Item<K>>): Question {
       return put({}, id, values)
     },
     flagWords: (answers) => [`--${spec.flag}`, effective(answers).join(',') || 'none'],
-    packages: (answers) => [
-      ...new Set(
-        effective(answers).flatMap(
-          (value) => spec.choices.find((c) => c.value === value)?.packages ?? [],
-        ),
-      ),
-    ],
+    packages: (answers) => [...new Set(effective(answers).flatMap(packagesOf))],
+    visible: (answers) => when(answers) && available(answers).length >= 1,
+    availabilityProblem: (answers) =>
+      unavailableReason((current(answers) ?? []).flatMap(packagesOf), answers),
+    settle: (answers) => {
+      const kept = effective(answers).filter((value) => allAvailable(packagesOf(value), answers))
+      return kept.length === effective(answers).length ? answers : put(answers, id, kept)
+    },
   }
 }
 
@@ -550,6 +629,9 @@ function password(id: 'dbPassword' | 'dbUrl' | 'adminPassword', spec: PasswordSp
     flagWords: () => [],
     packages: () => [],
     tidy: (answers) => answers,
+    visible: spec.when,
+    availabilityProblem: () => undefined,
+    settle: (answers) => answers,
   }
 }
 
@@ -558,13 +640,19 @@ function password(id: 'dbPassword' | 'dbUrl' | 'adminPassword', spec: PasswordSp
 const catalogueOf = (context: QuestionContext): Catalogue =>
   context.catalogue ?? installerCatalogue()
 
+/** What question 22 may offer for these answers (unreleased packages only in preview). */
+const offeredFor = (
+  answers: Answers,
+  catalogue: Catalogue = installerCatalogue(),
+): CatalogueEntry[] => offeredEntries(catalogue, { preview: previewOf(answers) })
+
 /** The picked entries (or the defaults), keeping only what the catalogue offers. */
 function pickedEntries(
   answers: Answers,
   catalogue: Catalogue = installerCatalogue(),
 ): CatalogueEntry[] {
   const ids = answers.features ?? DEFAULTS.features
-  return offeredEntries(catalogue).filter((entry) => ids.includes(entry.id))
+  return offeredFor(answers, catalogue).filter((entry) => ids.includes(entry.id))
 }
 
 const toChoice = (entry: CatalogueEntry): Choice<string> => ({
@@ -572,6 +660,9 @@ const toChoice = (entry: CatalogueEntry): Choice<string> => ({
   label: entry.name,
   hint: entry.description,
 })
+
+/** The same rule the catalogue applies to an id (letters, digits and dashes). */
+const FEATURE_ID = /^[a-z][a-z0-9-]{0,39}$/
 
 const featuresQuestion: Question = {
   id: 'features',
@@ -589,10 +680,12 @@ const featuresQuestion: Question = {
   },
   secretEnv: undefined,
   when: always,
+  // Shown only when the catalogue offers something (nothing is published yet in 0.2; #3).
+  visible: (answers) => offeredFor(answers).length > 0,
   answered: (answers) => answers.features !== undefined,
   async ask(prompter, answers, context) {
     const catalogue = catalogueOf(context)
-    const offered = offeredEntries(catalogue)
+    const offered = offeredFor(answers, catalogue)
     const current = answers.features ?? DEFAULTS.features
     // Step 1: the short popular list, grouped by category (never all 100+ packages at once).
     const groups = new Map(
@@ -601,14 +694,17 @@ const featuresQuestion: Question = {
         group.entries.map(toChoice),
       ]),
     )
-    const popular = answerOrThrow(
-      await prompter.groupMultiselect({
-        id: 'features',
-        message: 'Extra features? (popular first; space to toggle, enter to confirm)',
-        groups,
-        initialValues: current.filter((id) => offered.some((e) => e.id === id && e.popular)),
-      }),
-    )
+    const popular =
+      groups.size === 0
+        ? []
+        : answerOrThrow(
+            await prompter.groupMultiselect({
+              id: 'features',
+              message: 'Extra features? (popular first; space to toggle, enter to confirm)',
+              groups,
+              initialValues: current.filter((id) => offered.some((e) => e.id === id && e.popular)),
+            }),
+          )
     // Step 2 (optional): type to search everything else in the catalogue.
     const rest = offered.filter((entry) => !entry.popular)
     let more: string[] = []
@@ -620,19 +716,17 @@ const featuresQuestion: Question = {
           initialValue: false,
         }),
       )
-      if (search) {
-        more = answerOrThrow(
-          await prompter.search({
-            id: 'featuresMore',
-            message: 'Type to search, space to pick, enter when done',
-            placeholder: 'for example: tags',
-            options: rest.map(toChoice),
-            initialValues: current.filter((id) => rest.some((e) => e.id === id)),
-          }),
-        )
-      } else {
-        more = current.filter((id) => rest.some((e) => e.id === id))
-      }
+      more = search
+        ? answerOrThrow(
+            await prompter.search({
+              id: 'featuresMore',
+              message: 'Type to search, space to pick, enter when done',
+              placeholder: 'for example: tags',
+              options: rest.map(toChoice),
+              initialValues: current.filter((id) => rest.some((e) => e.id === id)),
+            }),
+          )
+        : current.filter((id) => rest.some((e) => e.id === id))
     }
     // A new pick means new follow-up questions: drop follow-up answers of packages no longer picked.
     return featureOptionsQuestion.tidy({ ...answers, features: [...popular, ...more] })
@@ -650,12 +744,10 @@ const featuresQuestion: Question = {
         : raw
     if (
       !Array.isArray(items) ||
-      !items.every(
-        (item): item is string => typeof item === 'string' && /^[a-z][a-z0-9-]{0,39}$/.test(item),
-      )
+      !items.every((item): item is string => typeof item === 'string' && FEATURE_ID.test(item))
     ) {
       problems.push(
-        '--features needs a comma list of package ids (for example log-viewer,billing), or none',
+        '--features needs a comma list of package ids (for example billing,search), or none',
       )
       return {}
     }
@@ -663,20 +755,76 @@ const featuresQuestion: Question = {
     return { features: [...new Set(items)] }
   },
   flagWords: (answers) => [
-    `--features`,
+    '--features',
     pickedEntries(answers)
       .map((e) => e.id)
       .join(',') || 'none',
   ],
   packages: (answers) => pickedEntries(answers).map((e) => e.package),
   tidy: (answers) => answers,
+  // A listed package that is not released is refused at the flags already (#109); unknown ids
+  // are left to resolveOptions, which names them.
+  availabilityProblem: (answers) => {
+    const offered = offeredFor(answers)
+    for (const id of answers.features ?? []) {
+      if (offered.some((entry) => entry.id === id)) continue
+      const listed = installerCatalogue().entries.find((entry) => entry.id === id)
+      const reason = listed === undefined ? undefined : unavailableReason([listed.package], answers)
+      if (reason !== undefined) return reason
+    }
+    return undefined
+  },
+  settle: (answers) => answers,
 }
 
-/** The follow-up keys (`<id>.<question>`) of the picked features. */
+/** The follow-up keys (`<id>.<question>`) of the picked features that apply now. */
 function followUpKeys(answers: Answers, catalogue?: Catalogue): string[] {
   return pickedEntries(answers, catalogue).flatMap((entry) =>
-    entry.followUps.map((f) => `${entry.id}.${f.id}`),
+    Object.keys(resolveFollowUps(entry, answers.featureOptions ?? {}).values),
   )
+}
+
+/** A follow-up value as `--feature-option` takes it: an id, yes/no, a comma list or none. */
+const FOLLOW_UP_VALUE = /^[a-z][a-z0-9-]{0,39}(,[a-z][a-z0-9-]{0,39}){0,19}$/
+/** `<package id>.<question id>`. */
+const FOLLOW_UP_KEY = /^[a-z][a-z0-9-]{0,39}\.[a-z][a-z0-9-]{0,39}$/
+
+/** Ask one follow-up question of a package (one choice, yes/no, or several choices). */
+async function askFollowUp(
+  prompter: Prompter,
+  key: string,
+  question: FollowUpQuestion,
+): Promise<string> {
+  if (question.type === 'confirm') {
+    const yes = answerOrThrow(
+      await prompter.confirm({ id: key, message: question.label, initialValue: question.default }),
+    )
+    return yes ? 'yes' : 'no'
+  }
+  if (question.type === 'select') {
+    return answerOrThrow(
+      await prompter.select({
+        id: key,
+        message: question.label,
+        options: question.choices,
+        initialValue: question.default,
+      }),
+    )
+  }
+  for (;;) {
+    const picked = answerOrThrow(
+      await prompter.multiselect({
+        id: key,
+        message: question.label,
+        options: question.choices,
+        initialValues: question.default,
+      }),
+    )
+    const value = picked.length === 0 ? 'none' : picked.join(',')
+    const problem = followUpProblem(question, value)
+    if (problem === undefined) return value
+    prompter.info(`This answer ${problem}.`)
+  }
 }
 
 const featureOptionsQuestion: Question = {
@@ -697,37 +845,37 @@ const featureOptionsQuestion: Question = {
   },
   secretEnv: undefined,
   when: (answers) => followUpKeys(answers).length > 0,
+  visible: (answers) => followUpKeys(answers).length > 0,
   answered: (answers) =>
     followUpKeys(answers).every((key) => answers.featureOptions?.[key] !== undefined),
   async ask(prompter, answers, context) {
     const options: Record<string, string> = { ...answers.featureOptions }
     for (const entry of pickedEntries(answers, catalogueOf(context))) {
-      for (const followUp of entry.followUps) {
-        const key = `${entry.id}.${followUp.id}`
-        if (options[key] !== undefined) continue
-        options[key] = answerOrThrow(
-          await prompter.select({
-            id: key,
-            message: followUp.label,
-            options: followUp.choices,
-            initialValue: followUp.default,
-          }),
-        )
+      // Question by question, so a `when` sees the answers given just before it.
+      const earlier: Record<string, string> = {}
+      for (const question of entry.followUps) {
+        const key = `${entry.id}.${question.id}`
+        if (!followUpApplies(question, earlier)) {
+          delete options[key]
+          continue
+        }
+        const value = options[key] ?? (await askFollowUp(prompter, key, question))
+        options[key] = value
+        earlier[question.id] = value
       }
     }
     return { ...answers, featureOptions: options }
   },
   describe: (answers) => {
     const lines = pickedEntries(answers).flatMap((entry) =>
-      entry.followUps.map(
-        (f) =>
-          `${entry.id}.${f.id}=${answers.featureOptions?.[`${entry.id}.${f.id}`] ?? f.default}`,
+      Object.entries(resolveFollowUps(entry, answers.featureOptions ?? {}).values).map(
+        ([key, value]) => `${key}=${value}`,
       ),
     )
     return lines.length === 0 ? 'none' : lines.join(', ')
   },
   read(raw, problems) {
-    // From flags: ['billing.provider=paddle', ...]; from setup.json: { 'billing.provider': 'paddle' }.
+    // From flags: ['billing.provider=paddle', ...]; from strutvane.json: { 'billing.provider': 'paddle' }.
     const pairs: [string, unknown][] = Array.isArray(raw)
       ? raw.map((item: unknown) => {
           const textItem = String(item)
@@ -739,11 +887,7 @@ const featureOptionsQuestion: Question = {
         : []
     const options: Record<string, string> = {}
     for (const [key, value] of pairs) {
-      if (
-        !/^[a-z][a-z0-9-]{0,39}\.[a-z][a-z0-9-]{0,39}$/.test(key) ||
-        typeof value !== 'string' ||
-        !/^[a-z][a-z0-9-]{0,39}$/.test(value)
-      ) {
+      if (!FOLLOW_UP_KEY.test(key) || typeof value !== 'string' || !FOLLOW_UP_VALUE.test(value)) {
         problems.push(
           `--feature-option "${key}${typeof value === 'string' ? `=${value}` : ''}" must look like <id>.<question>=<value>, e.g. billing.provider=paddle`,
         )
@@ -755,10 +899,9 @@ const featureOptionsQuestion: Question = {
   },
   flagWords: (answers) =>
     pickedEntries(answers).flatMap((entry) =>
-      entry.followUps.flatMap((f) => [
-        '--feature-option',
-        `${entry.id}.${f.id}=${answers.featureOptions?.[`${entry.id}.${f.id}`] ?? f.default}`,
-      ]),
+      Object.entries(resolveFollowUps(entry, answers.featureOptions ?? {}).values).flatMap(
+        ([key, value]) => ['--feature-option', `${key}=${value}`],
+      ),
     ),
   packages: () => [],
   tidy(answers) {
@@ -771,6 +914,8 @@ const featureOptionsQuestion: Question = {
       ),
     }
   },
+  availabilityProblem: () => undefined,
+  settle: (answers) => answers,
 }
 
 // ── The project name ──────────────────────────────────────────────────────────────────────────
@@ -791,6 +936,7 @@ const nameQuestion: Question = {
   },
   secretEnv: undefined,
   when: always,
+  visible: always,
   answered: (answers) => answers.name !== undefined,
   async ask(prompter, answers, context) {
     const value = await prompter.text({
@@ -811,6 +957,8 @@ const nameQuestion: Question = {
   flagWords: () => [],
   packages: () => [],
   tidy: (answers) => answers,
+  availabilityProblem: () => undefined,
+  settle: (answers) => answers,
 }
 
 // ── The registry ──────────────────────────────────────────────────────────────────────────────
@@ -865,7 +1013,7 @@ export const QUESTIONS: readonly Question[] = [
     title: 'Setup',
     recommended: true,
     flag: 'mode',
-    help: 'Recommended: 7 questions; custom: every question',
+    help: 'Recommended: the starred questions; custom: every question',
     message: (a) => `How do you want to set up ${a.name ?? 'your project'}?`,
     choices: modeChoices,
     default: () => DEFAULTS.mode,
@@ -950,8 +1098,8 @@ export const QUESTIONS: readonly Question[] = [
       },
       {
         value: 'none',
+        // No sign-in means no auth package (decision #107); the API stays closed with tokens.
         label: 'No sign-in (the API then requires API tokens)',
-        packages: ['@strutvane/auth'],
         short: 'No sign-in (API needs tokens)',
       },
     ],
@@ -1035,12 +1183,12 @@ export const QUESTIONS: readonly Question[] = [
     title: 'Starting roles',
     flag: 'roles',
     when: hasSignIn,
-    help: 'basic: admin + member; extended: + manager, viewer',
+    help: 'admin-member, or admin-manager-member-viewer',
     message: 'Starting roles?',
     choices: [
-      { value: 'basic', label: 'Admin + member', short: 'admin, member' },
+      { value: 'admin-member', label: 'Admin + member', short: 'admin, member' },
       {
-        value: 'extended',
+        value: 'admin-manager-member-viewer',
         label: 'Admin + manager + member + viewer',
         short: 'admin, manager, member, viewer',
       },
@@ -1435,7 +1583,8 @@ export const QUESTIONS: readonly Question[] = [
     flag: 'agents',
     help: 'AGENTS.md, skills and local docs for AI coding assistants',
     message: 'Set up AI coding assistants? (AGENTS.md, skills, local docs MCP)',
-    packages: ['@strutvane/agent-tools'],
+    // AGENTS.md is the installer's own file; the skills and local docs come with the package.
+    optionalPackages: ['@strutvane/agent-tools'],
     default: () => DEFAULTS.agents,
   }),
   confirm('git', {
@@ -1462,13 +1611,13 @@ export const QUESTIONS: readonly Question[] = [
     group: 'Security',
     title: 'Security profile',
     flag: 'security-profile',
-    help: 'standard, or strict (admin 2FA, 8 h sessions, CSP)',
+    help: 'standard, or strict (admin 2FA, 8 h sessions, CSP, HSTS preload)',
     message: 'Security profile?',
     choices: [
       { value: 'standard', label: 'Standard', short: 'standard' },
       {
         value: 'strict',
-        label: 'Strict: admin 2FA, breached-password check, 8 h sessions, CSP',
+        label: 'Strict: admin 2FA, breached passwords, 8 h sessions, CSP, HSTS preload',
         short: 'strict',
       },
     ],
@@ -1592,7 +1741,7 @@ export const QUESTIONS: readonly Question[] = [
     group: 'Ops',
     title: 'Deploy to',
     flag: 'deploy',
-    help: 'later, node (VPS, Railway, Render) or kubernetes',
+    help: 'later, node (VPS, Railway, Render) or docker (Kubernetes, Fly, Cloud Run, ECS)',
     message: 'Where will you deploy? (writes a deploy recipe and the /up route)',
     choices: [
       { value: 'later', label: 'Decide later', short: 'decide later' },
@@ -1651,5 +1800,43 @@ export function projectPackages(answers: Answers): string[] {
   ]
 }
 
-/** Is this catalogue id offered right now? (Re-exported for the args check.) */
-export const isOfferedFeature = (id: string): boolean => findOffered(id) !== undefined
+/**
+ * Why answers given as flags (or stored in strutvane.json) cannot be used: each names a package
+ * that is not published yet (decision #109). Empty when everything is available.
+ *
+ * @example
+ * availabilityProblems({ cache: 'redis' })
+ * // ["--cache-store redis: @strutvane/redis isn't available yet (planned for 0.3). ..."]
+ */
+export function availabilityProblems(answers: Answers): string[] {
+  return QUESTIONS.flatMap((question) => {
+    const problem = question.availabilityProblem(answers)
+    if (problem === undefined) return []
+    const value = answers[question.id]
+    const shown =
+      typeof value === 'boolean' ? '' : ` ${Array.isArray(value) ? value.join(',') : String(value)}`
+    const flag = question.flag === undefined ? question.title : `--${question.flag.name}${shown}`
+    return [`${flag}: ${problem}`]
+  })
+}
+
+/**
+ * The answers with every default that needs an unreleased package moved to an available choice
+ * (a hidden question keeps its default only when that default can be installed). Run before
+ * {@link resolveOptions}, so the options never name a package the app cannot install.
+ *
+ * @example
+ * settleAnswers({ teams: true }).activityLog // false while @strutvane/activity-log is unreleased
+ */
+export function settleAnswers(answers: Answers): Answers {
+  let settled = answers
+  for (const question of QUESTIONS) {
+    if (question.when(settled)) settled = question.settle(settled)
+  }
+  return settled
+}
+
+/** Is this catalogue id offered right now? */
+export const isOfferedFeature = (id: string, answers: Answers = {}): boolean =>
+  findOffered(id, installerCatalogue(), { preview: answers.previewCatalogue === true }) !==
+  undefined

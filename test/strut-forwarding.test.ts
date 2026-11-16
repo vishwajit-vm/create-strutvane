@@ -4,11 +4,12 @@
  * (a small .cjs file run by node; see STRUT_CONTAINER_CLI in strut.js) records what would have run.
  */
 import { spawnSync } from 'node:child_process'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { resolveOptions } from '../src/options.ts'
 import { renderProject } from '../src/templates/project.ts'
+import { VERSION } from '../src/version.ts'
 import { writeProjectFiles } from '../src/write-files.ts'
 import { tempFolder } from './helpers/fakes.ts'
 
@@ -38,11 +39,16 @@ beforeAll(async () => {
 /** Run `node strut.js <args>` in the project with the fake docker. */
 function strut(args: string[], env: Record<string, string> = {}) {
   writeFileSync(log, '')
+  // Windows environment names ignore case: drop any inherited spelling of an overridden name.
+  const overridden = new Set(Object.keys(env).map((key) => key.toLowerCase()))
+  const inherited = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !overridden.has(key.toLowerCase())),
+  )
   const result = spawnSync(process.execPath, ['strut.js', ...args], {
     cwd: directory,
     encoding: 'utf8',
     env: {
-      ...process.env,
+      ...inherited,
       STRUT_CONTAINER_CLI: fakeDocker,
       FAKE_LOG: log,
       FAKE_RUNNING: 'app\nmailpit\n',
@@ -95,7 +101,31 @@ describe('strut.js in Docker mode', () => {
       '--wait-timeout',
       '180',
     ])
-    expect(strut(['services:down', '--volumes']).calls[0]?.slice(-2)).toEqual(['down', '-v'])
+    expect(strut(['services:down']).calls[0]?.slice(-1)).toEqual(['down'])
+  })
+
+  it('services:down --volumes deletes data: refused without a terminal unless --force (#6)', () => {
+    const refused = strut(['services:down', '--volumes'])
+    expect(refused.code).toBe(1)
+    expect(refused.calls).toHaveLength(0)
+    expect(refused.output).toContain('Add --force to confirm')
+    expect(strut(['services:down', '--volumes', '--force']).calls[0]?.slice(-2)).toEqual([
+      'down',
+      '-v',
+    ])
+  })
+
+  it('services:logs and db:shell talk to the containers (db:shell reads the login inside)', () => {
+    expect(strut(['services:logs', 'db']).calls[0]?.slice(-3)).toEqual(['logs', '--follow', 'db'])
+    // This project is SQLite: there is no database container to open a shell in.
+    const sqlite = strut(['db:shell'])
+    expect(sqlite.code).toBe(1)
+    expect(sqlite.output).toContain('SQLite')
+  })
+
+  it('"node strut" alone and "help" both mean list (#13)', () => {
+    expect(strut([]).calls[1]?.slice(-3)).toEqual(['node', 'strut', 'list'])
+    expect(strut(['help']).calls[1]?.slice(-3)).toEqual(['node', 'strut', 'list'])
   })
 
   it('never forwards inside the container (STRUTVANE_IN_CONTAINER=1)', () => {
@@ -105,22 +135,56 @@ describe('strut.js in Docker mode', () => {
     expect(result.output).toContain('Dependencies are not installed yet. Run: npm run setup')
   })
 
-  it('runs setup on the host (it starts the containers itself)', () => {
-    const result = strut(['setup'])
+  it('setup runs on the host: a fresh clone resumes with the recorded installer version (#9)', () => {
+    // No .strutvane/local/setup.json: npm exec runs the create-strutvane that made the project.
+    const fakeNpm = join(directory, '..', 'fake-npm', 'npm-cli.js')
+    mkdirSync(join(directory, '..', 'fake-npm'), { recursive: true })
+    writeFileSync(
+      fakeNpm,
+      `require('node:fs').writeFileSync(${JSON.stringify(`${fakeNpm}.args`)}, JSON.stringify(process.argv.slice(2)))`,
+    )
+    const result = strut(['setup'], { npm_execpath: fakeNpm })
     expect(result.calls).toHaveLength(0)
-    expect(result.output).toMatch(/No .strutvane\/setup.json found/)
+    expect(result.code, result.output).toBe(0)
+    expect(JSON.parse(readFileSync(`${fakeNpm}.args`, 'utf8'))).toEqual([
+      'exec',
+      '--yes',
+      `--package=create-strutvane@${VERSION}`,
+      '--',
+      'create-strutvane',
+      '--resume',
+      directory,
+    ])
+  })
+
+  it('setup uses the installer that made this copy while it still exists', () => {
+    const script = join(directory, '..', 'fake-installer.cjs')
+    writeFileSync(
+      script,
+      `require('node:fs').writeFileSync(${JSON.stringify(`${script}.args`)}, JSON.stringify(process.argv.slice(2)))`,
+    )
+    const state = join(directory, '.strutvane', 'local', 'setup.json')
+    mkdirSync(join(directory, '.strutvane', 'local'), { recursive: true })
+    writeFileSync(state, JSON.stringify({ resumeWith: [process.execPath, script, '--resume'] }))
+    try {
+      expect(strut(['setup']).code).toBe(0)
+      expect(JSON.parse(readFileSync(`${script}.args`, 'utf8'))).toEqual(['--resume', directory])
+    } finally {
+      rmSync(state)
+    }
   })
 
   it('refuses services:* without Docker, with a reason', () => {
-    const envJson = join(directory, '.strutvane', 'env.json')
-    const before = readFileSync(envJson, 'utf8')
+    // A per-computer override (decision #110) switches this copy to host mode.
+    const envJson = join(directory, '.strutvane', 'local', 'env.json')
+    mkdirSync(join(directory, '.strutvane', 'local'), { recursive: true })
     writeFileSync(envJson, JSON.stringify({ mode: 'host' }))
     try {
       const result = strut(['services:up'])
       expect(result.code).toBe(1)
       expect(result.output).toContain('This project runs without Docker')
     } finally {
-      writeFileSync(envJson, before)
+      rmSync(envJson)
     }
   })
 })
@@ -191,8 +255,9 @@ describe('Sail-style pass-throughs: node strut npm|npx|node|shell', () => {
   })
 
   it('host mode: npm, npx and node run here (never in Docker), arguments verbatim, exit code passed through', () => {
-    const envJson = join(directory, '.strutvane', 'env.json')
-    const before = readFileSync(envJson, 'utf8')
+    // A per-computer override (decision #110) switches this copy to host mode.
+    const envJson = join(directory, '.strutvane', 'local', 'env.json')
+    mkdirSync(join(directory, '.strutvane', 'local'), { recursive: true })
     writeFileSync(envJson, JSON.stringify({ mode: 'host' }))
     try {
       const echo = strut([
@@ -210,7 +275,7 @@ describe('Sail-style pass-throughs: node strut npm|npx|node|shell', () => {
       expect(npm.output.trim()).toMatch(/^\d+\.\d+\.\d+/)
       expect(npm.calls).toHaveLength(0)
     } finally {
-      writeFileSync(envJson, before)
+      rmSync(envJson)
     }
   })
 

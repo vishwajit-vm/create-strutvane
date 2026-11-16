@@ -1,5 +1,5 @@
 /**
- * The step runner: runs the setup steps in order, shows progress, saves `.strutvane/setup.json`
+ * The step runner: runs the setup steps in order, shows progress, saves `.strutvane/local/setup.json`
  * after every change, offers recovery on failure, and resumes where an earlier run stopped.
  *
  * Rules:

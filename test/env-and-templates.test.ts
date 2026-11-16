@@ -19,6 +19,7 @@ import { type ProjectOptions, resolveOptions } from '../src/options.ts'
 import { isForbiddenInCommit, MUST_BE_IGNORED } from '../src/steps/git.ts'
 import { secretKeys } from '../src/templates/env.ts'
 import { renderProject } from '../src/templates/project.ts'
+import { FRAMEWORK_RANGE, VITEST } from '../src/version.ts'
 import { tempFolder } from './helpers/fakes.ts'
 
 const options = (extra: Parameters<typeof resolveOptions>[0] = {}): ProjectOptions =>
@@ -171,47 +172,73 @@ describe('generated files', () => {
     ).toBe(false)
   })
 
-  it('ships the scripts, strut.js, AGENTS.md, a lockfile and ignore-scripts', () => {
+  it('ships the scripts, strut.js, AGENTS.md, engines and the npm guards (L5)', () => {
     const project = renderProject(options())
     const manifest: unknown = JSON.parse(file(project, 'package.json'))
     expect(manifest).toMatchObject({
       engines: { node: '>=24.3' },
+      devEngines: { packageManager: { name: 'npm', version: '>=11.19.0', onFail: 'error' } },
       scripts: {
         dev: 'node strut dev',
         build: 'node strut build',
         start: 'node build/server.js',
-        test: 'node strut test',
+        test: 'vitest run',
         setup: 'node strut setup',
         strut: 'node strut',
       },
-      strutvane: { rebuild: [] },
+      devDependencies: { vitest: VITEST.version },
+      allowScripts: {},
     })
-    expect(file(project, '.npmrc')).toBe('ignore-scripts=true\n')
-    expect(JSON.parse(file(project, 'package-lock.json'))).toMatchObject({ lockfileVersion: 3 })
+    const npmrc = file(project, '.npmrc')
+    for (const guard of [
+      'ignore-scripts=true',
+      'strict-allow-scripts=true',
+      'min-release-age=1',
+      'min-release-age-exclude[]=@strutvane/*',
+      'allow-git=none',
+      'engine-strict=true',
+    ]) {
+      expect(npmrc.split('\n')).toContain(guard)
+    }
+    // No shipped lockfile: the first install writes it (with the guards above) and git commits it.
+    expect(project.some((f) => f.path === 'package-lock.json')).toBe(false)
     expect(file(project, 'strut.js')).toMatch(/node strut <command>/)
-    expect(file(project, 'AGENTS.md')).toMatch(/node strut/)
+    expect(file(project, 'AGENTS.md')).toMatch(/node strut list/)
     expect(file(project, 'README.md')).toMatch(
-      /npm run dev[\s\S]*node strut help[\s\S]*npm run setup/,
+      /npm run dev[\s\S]*node strut list[\s\S]*npm run setup/,
     )
   })
 
-  it('uses the MVC layout from the shared design board', () => {
+  it('without tests there is no vitest and no test script', () => {
+    const manifest = JSON.parse(file(renderProject(options({ testing: 'none' })), 'package.json'))
+    expect(manifest.scripts.test).toBeUndefined()
+    expect(manifest.devDependencies).toEqual({})
+  })
+
+  it('uses the MVC layout with dot-suffix file names (decision #34)', () => {
     const paths = renderProject(options()).map((f) => f.path)
     for (const expected of [
-      'app/http/controllers/health-controller.ts',
+      'app/http/controllers/health.controller.ts',
       'app/models/user.ts',
-      'app/policies/user-policy.ts',
+      'app/policies/user.policy.ts',
       'bootstrap/app.ts',
       'routes/web.ts',
       'routes/api.ts',
       'config/app.ts',
+      'config/cors.ts',
+      'config/tenancy.ts',
       'database/migrations/0001_01_01_000000_create_users_table.ts',
-      'database/seeders/database-seeder.ts',
-      'database/factories/user-factory.ts',
+      'database/seeders/database.seeder.ts',
+      'database/seeders/admin.seeder.ts',
+      'database/factories/user.factory.ts',
       'resources/ui/main.tsx',
+      'tests/feature/health.test.ts',
     ]) {
       expect(paths).toContain(expected)
     }
+    expect(
+      paths.filter((p) => /(^|\/)[a-z]+-(policy|factory|seeder|controller)\.ts$/.test(p)),
+    ).toEqual([])
   })
 
   it('.gitignore really ignores every secret path (checked with git itself)', () => {
@@ -233,7 +260,8 @@ describe('generated files', () => {
       '.env.local',
       'database/database.sqlite-wal',
       'docker/compose.yaml',
-      '.strutvane/setup.json',
+      '.strutvane/local/setup.json',
+      '.strutvane/local/packages/x/package.json',
       'storage/x',
     ]) {
       expect(isForbiddenInCommit(path), path).toBe(true)
@@ -243,6 +271,8 @@ describe('generated files', () => {
       'package-lock.json',
       'database/migrations/0001_x.ts',
       'strut.js',
+      // The rest of .strutvane/ (generated types, resources, client) is committed (#10).
+      '.strutvane/types/models.d.ts',
     ]) {
       expect(isForbiddenInCommit(path), path).toBe(false)
     }
@@ -297,23 +327,20 @@ describe('Docker mode files (everything in containers, like Sail)', () => {
     expect(compose).not.toMatch(/depends_on/)
   })
 
-  it('points the app at service names, and tells strut.js to forward', () => {
+  it('points the app at service names; strutvane.json records Docker mode (#110)', () => {
     const project = renderProject(options())
     const env = parseEnv(file(project, '.env'))
     expect(env.get('DB_HOST')).toBe('db')
     expect(env.get('MAIL_HOST')).toBe('mailpit')
     expect(env.get('FORWARD_DB_PORT')).toBe('3306')
-    expect(JSON.parse(file(project, '.strutvane/env.json'))).toEqual({
-      mode: 'docker',
-      composeFile: 'docker/compose.yaml',
-      service: 'app',
-    })
-    expect(
-      JSON.parse(file(renderProject(options({ database: 'sqlite' })), '.strutvane/env.json')).mode,
-    ).toBe('host')
+    expect(JSON.parse(file(project, 'strutvane.json')).answers.docker).toBe(true)
+    const sqlite = renderProject(options({ database: 'sqlite' }))
+    expect(JSON.parse(file(sqlite, 'strutvane.json')).answers.docker).toBe(false)
+    // The per-machine override is optional and never generated.
+    expect(project.some((f) => f.path.startsWith('.strutvane/'))).toBe(false)
   })
 
-  it('pins the database driver in package.json and the shipped lockfile', () => {
+  it('pins the database driver exactly; Strutvane packages use the framework range', () => {
     for (const [database, driver] of [
       ['mysql', 'mysql2'],
       ['postgres', 'pg'],
@@ -322,28 +349,16 @@ describe('Docker mode files (everything in containers, like Sail)', () => {
       const manifest = JSON.parse(file(project, 'package.json')) as {
         dependencies: Record<string, string>
       }
-      const version = manifest.dependencies[driver]
-      expect(version).toMatch(/^\d+\.\d+\.\d+$/) // exact, never a range
-      const lock = JSON.parse(file(project, 'package-lock.json')) as {
-        packages: Record<string, { version?: string; integrity?: string }>
-      }
-      expect(lock.packages[`node_modules/${driver}`]?.version).toBe(version)
-      for (const [path, entry] of Object.entries(lock.packages)) {
-        // Local stubs (framework, design) are links without a hash; everything from the registry has one.
-        if (path.startsWith('node_modules/') && !path.startsWith('node_modules/@strutvane/'))
-          expect(entry.integrity, path).toMatch(/^sha512-/)
-      }
+      expect(manifest.dependencies[driver]).toMatch(/^\d+\.\d+\.\d+$/) // exact, never a range
     }
-    // SQLite needs no driver: only the Strutvane packages the default answers bring (local stubs).
+    // SQLite needs no driver (node:sqlite): only the Strutvane packages the default answers bring.
     expect(
       JSON.parse(file(renderProject(options({ database: 'sqlite' })), 'package.json')).dependencies,
     ).toEqual({
-      '@strutvane/framework': 'file:stubs/strutvane-framework',
-      '@strutvane/agent-tools': 'file:stubs/strutvane-agent-tools',
-      '@strutvane/auth': 'file:stubs/strutvane-auth',
-      '@strutvane/design-crisp': 'file:stubs/strutvane-design-crisp',
-      '@strutvane/logs': 'file:stubs/strutvane-logs',
-      '@strutvane/ui': 'file:stubs/strutvane-ui',
+      '@strutvane/framework': FRAMEWORK_RANGE,
+      '@strutvane/auth': FRAMEWORK_RANGE,
+      '@strutvane/design-crisp': FRAMEWORK_RANGE,
+      '@strutvane/ui': FRAMEWORK_RANGE,
     })
   })
 

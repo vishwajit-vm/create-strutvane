@@ -57,7 +57,7 @@ describe('question 14: Docker is the default only when it is running (never requ
     expect(result.code).toBe(0)
     expect(result.world.calls.map(describeCall)).toEqual([
       'docker info',
-      'npm ci',
+      'npm install',
       'strut db:prepare',
       'strut migrate',
     ])
@@ -162,8 +162,8 @@ describe('after a Docker problem: your own server first, then Docker, then SQLit
     )
     expect(result.code).toBe(0)
     const calls = result.world.calls.map(describeCall)
-    expect(calls.slice(calls.indexOf('npm ci'))).toEqual([
-      'npm ci',
+    expect(calls.slice(calls.indexOf('npm install'))).toEqual([
+      'npm install',
       'strut db:prepare',
       'strut migrate',
     ])
@@ -175,12 +175,12 @@ describe('after a Docker problem: your own server first, then Docker, then SQLit
     expect(env.get('COMPOSE_PROJECT_NAME')).toBeUndefined() // commented out
     expect(existsSync(join(result.directory, 'docker'))).toBe(false)
     expect(
-      JSON.parse(readFileSync(join(result.directory, '.strutvane', 'env.json'), 'utf8')).mode,
-    ).toBe('host')
+      JSON.parse(readFileSync(join(result.directory, 'strutvane.json'), 'utf8')).answers.docker,
+    ).toBe(false)
     expect(
       JSON.parse(readFileSync(join(result.directory, 'strutvane.json'), 'utf8')).answers,
     ).toMatchObject({ docker: false, dbPort: 3307, dbUser: 'root' })
-    for (const file of ['.env.example', 'strutvane.json', '.strutvane/setup.json'])
+    for (const file of ['.env.example', 'strutvane.json', '.strutvane/local/setup.json'])
       expect(readFileSync(join(result.directory, file), 'utf8')).not.toContain('Xampp-Pass-4711')
     expect(result.output()).not.toContain('Xampp-Pass-4711')
   })
@@ -338,7 +338,7 @@ describe('connection details', () => {
     expect(result.env().get('DB_URL')).toBe(url)
     expect(result.env().get('DB_DATABASE')).toBe('shop')
     expect(result.output()).not.toContain('Url-Pass-4711')
-    for (const file of ['.env.example', 'strutvane.json', '.strutvane/setup.json'])
+    for (const file of ['.env.example', 'strutvane.json', '.strutvane/local/setup.json'])
       expect(readFileSync(join(result.directory, file), 'utf8')).not.toContain('Url-Pass-4711')
   })
 

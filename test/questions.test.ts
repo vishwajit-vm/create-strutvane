@@ -3,6 +3,7 @@
  * the review screen and "Change an answer".
  */
 import { describe, expect, it } from 'vitest'
+import type { Answers } from '../src/options.ts'
 import { CANCEL, CancelledError } from '../src/prompter.ts'
 import { QUESTIONS } from '../src/question-registry.ts'
 import { askMissing, pruneAnswers, review, reviewLines } from '../src/questions.ts'
@@ -11,9 +12,10 @@ import { CUSTOM_ANSWERS, RECOMMENDED_ANSWERS, scriptedPrompter } from './helpers
 const context = { cwd: '/code', targetProblem: () => undefined }
 
 describe('Recommended mode (the default)', () => {
-  it('asks only the 7 starred questions after the name and the opener', async () => {
+  it('asks the 6 starred questions of 0.2 after the name and the opener (#58)', async () => {
     const { prompter, asked } = scriptedPrompter({ ...RECOMMENDED_ANSWERS, name: 'my-app' })
     const answers = await askMissing({}, prompter, context)
+    // "AI assistants" (★) appears once @strutvane/agent-tools is published (decision #3).
     expect(asked).toEqual([
       'name',
       'mode',
@@ -23,9 +25,16 @@ describe('Recommended mode (the default)', () => {
       'teams',
       'database',
       'docker',
-      'agents',
     ])
-    expect(answers).toEqual({ ...RECOMMENDED_ANSWERS, name: 'my-app', docker: true })
+    const { agents: _agents, ...rest } = RECOMMENDED_ANSWERS
+    expect(answers).toEqual({ ...rest, name: 'my-app', docker: true })
+  })
+
+  it('with --preview-catalogue the 7th starred question (AI assistants) is asked too', async () => {
+    const { prompter, asked } = scriptedPrompter({ ...RECOMMENDED_ANSWERS, name: 'my-app' })
+    await askMissing({ previewCatalogue: true }, prompter, context)
+    expect(asked.at(-1)).toBe('agents')
+    expect(asked).toHaveLength(9)
   })
 
   it('the opener counts the questions from the registry', async () => {
@@ -62,7 +71,6 @@ describe('Recommended mode (the default)', () => {
       'dbName',
       'dbUser',
       'dbPassword',
-      'agents',
     ])
     expect(answers).toMatchObject({
       docker: false,
@@ -82,7 +90,7 @@ describe('Recommended mode (the default)', () => {
       auth: 'none',
     })
     await askMissing({}, prompter, context)
-    expect(asked).toEqual(['name', 'mode', 'stack', 'auth', 'database', 'docker', 'agents'])
+    expect(asked).toEqual(['name', 'mode', 'stack', 'auth', 'database', 'docker'])
   })
 
   it('never asks what was given as a flag', async () => {
@@ -108,9 +116,47 @@ describe('Recommended mode (the default)', () => {
 })
 
 describe('Custom mode', () => {
-  it('asks every question in blueprint order, with group headers', async () => {
+  it('asks every question of 0.2 in blueprint order; the unreleased ones are hidden (#3, #108)', async () => {
     const { prompter, asked, infos } = scriptedPrompter(CUSTOM_ANSWERS)
     await askMissing({}, prompter, context)
+    expect(asked).toEqual([
+      'name',
+      'mode',
+      'stack',
+      'design',
+      'ui',
+      'auth',
+      'security',
+      'apiAccess',
+      'roles',
+      'teams',
+      'database',
+      'docker',
+      'adminEmail',
+      'adminPasswordMode',
+      'sampleData',
+      'mailer',
+      'locale',
+      'timezone',
+      'currency',
+      'testing',
+      'git',
+      'ci',
+      'securityProfile',
+      'uiLanguages',
+      'appearance',
+      'pwa',
+      'deploy',
+      'editor',
+      'devContainer',
+    ])
+    expect(infos).toContain('── Sign-in ──')
+    expect(infos).not.toContain('── AI ──')
+  })
+
+  it('with --preview-catalogue asks every question in blueprint order, with group headers', async () => {
+    const { prompter, asked, infos } = scriptedPrompter(CUSTOM_ANSWERS)
+    await askMissing({ previewCatalogue: true }, prompter, context)
     expect(asked).toEqual([
       'name',
       'mode',
@@ -163,7 +209,7 @@ describe('Custom mode', () => {
       teams: true,
       database: 'postgres',
     })
-    const answers = await askMissing({}, prompter, context)
+    const answers = await askMissing({ previewCatalogue: true }, prompter, context)
     expect(asked.indexOf('sso')).toBeGreaterThan(asked.indexOf('teams'))
     expect(asked).toContain('tenantResolver')
     expect(answers).toMatchObject({ teams: true, sso: false, tenantResolver: 'switcher' })
@@ -175,7 +221,7 @@ describe('Custom mode', () => {
       ai: true,
       aiProvider: 'openai',
     })
-    const answers = await askMissing({}, prompter, context)
+    const answers = await askMissing({ previewCatalogue: true }, prompter, context)
     expect(asked.indexOf('aiProvider')).toBe(asked.indexOf('ai') + 1)
     expect(answers.aiProvider).toBe('openai')
     // Free text is where a key could be typed: no free-text question mentions one.
@@ -221,7 +267,13 @@ describe('Custom mode', () => {
 
 describe('review screen', () => {
   it('lists every answer that applies, defaults included, grouped', () => {
-    const text = reviewLines({ name: 'my-app', teams: true, database: 'mysql' }, '/code').join('\n')
+    const answers: Answers = {
+      name: 'my-app',
+      teams: true,
+      database: 'mysql',
+      previewCatalogue: true,
+    }
+    const text = reviewLines(answers, '/code').join('\n')
     expect(text).toMatch(/^Folder\s+/)
     for (const line of [
       /^Database\s+MySQL$/m,
@@ -238,6 +290,10 @@ describe('review screen', () => {
       expect(text).toMatch(line)
     }
     expect(text).toMatch(/Teams on MySQL/)
+    // Without the preview, questions about unreleased packages are not in the review at all.
+    const released = reviewLines({ ...answers, previewCatalogue: false }, '/code').join('\n')
+    expect(released).not.toMatch(/^Extra features/m)
+    expect(released).not.toMatch(/^Activity history/m)
   })
 
   it('shows secrets as "(hidden)", never their value', () => {

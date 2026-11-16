@@ -1,0 +1,13 @@
+{
+  "name": "@strutvane/framework",
+  "version": "0.1.0-next.1",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "strutvane": "./bin.js"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./cli": "./cli.js"
+  }
+}

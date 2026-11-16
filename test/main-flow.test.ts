@@ -37,7 +37,7 @@ describe('CI mode (--yes and flags)', () => {
       'docker compose version',
       'docker compose up',
       'app: chown 1000:1000',
-      'app: npm ci',
+      'app: npm install',
       'app: strut migrate',
       'git --version',
       'git rev-parse',
@@ -75,13 +75,13 @@ describe('CI mode (--yes and flags)', () => {
       '1000:1000',
       '/app/node_modules',
     ])
-    const npm = world.calls.find((call) => describeCall(call) === 'app: npm ci')
+    const npm = world.calls.find((call) => describeCall(call) === 'app: npm install')
     expect(npm?.args.slice(7)).toEqual([
       'exec',
       '-T',
       'app',
       'npm',
-      'ci',
+      'install',
       '--ignore-scripts',
       '--no-audit',
       '--no-fund',
@@ -108,11 +108,11 @@ describe('CI mode (--yes and flags)', () => {
     )
     // The same project without questions: every question's flag, from the registry.
     expect(output()).toMatch(
-      /npm create strutvane@latest acme -- --stack full --design crisp --ui admin --sign-in email --security 2fa,verification .* --no-teams --db mysql --docker .*--features log-viewer --testing vitest --agents --git --ci-workflow .*--deploy later --editor --no-dev-container --yes/,
+      /npm create strutvane@latest acme -- --stack full --design crisp --ui admin --sign-in email --security 2fa,verification .* --no-teams --db mysql --docker .*--testing vitest --git --ci-workflow .*--deploy later --editor --no-dev-container --yes/,
     )
     expect(output()).toMatch(/Mail inbox\s+http:\/\/localhost:8025/)
     const state: unknown = JSON.parse(
-      readFileSync(join(cwd, 'acme', '.strutvane', 'setup.json'), 'utf8'),
+      readFileSync(join(cwd, 'acme', '.strutvane', 'local', 'setup.json'), 'utf8'),
     )
     expect(JSON.stringify(state)).not.toMatch(/secret-0|Abcd-Efgh/) // no secret ever in setup.json
   })
@@ -125,10 +125,16 @@ describe('CI mode (--yes and flags)', () => {
       spawn: world.spawn,
     })
     expect(await main(environment)).toBe(0)
-    expect(world.calls.map(describeCall).slice(0, 2)).toEqual(['npm ci', 'strut migrate'])
+    expect(world.calls.map(describeCall).slice(0, 2)).toEqual(['npm install', 'strut migrate'])
     const [npm, migrate] = world.calls
     expect(npm?.command).toBe(FAKE_NODE)
-    expect(npm?.args).toEqual([FAKE_NPM_CLI, 'ci', '--ignore-scripts', '--no-audit', '--no-fund'])
+    expect(npm?.args).toEqual([
+      FAKE_NPM_CLI,
+      'install',
+      '--ignore-scripts',
+      '--no-audit',
+      '--no-fund',
+    ])
     expect(migrate?.command).toBe(FAKE_NODE)
     expect(migrate?.args).toEqual(['strut.js', 'migrate', '--seed'])
     expect(migrate?.redact).toEqual(['Abcd-Efgh-Jkmn-Pqrs'])

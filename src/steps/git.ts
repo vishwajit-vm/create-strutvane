@@ -47,7 +47,7 @@ function sameFolder(a: string, b: string): boolean {
 export const MUST_BE_IGNORED = [
   '.env',
   '.env.local',
-  '.strutvane/setup.json',
+  '.strutvane/local/setup.json',
   'docker/compose.yaml',
   'database/database.sqlite',
   'database/database.sqlite-wal',
@@ -67,7 +67,7 @@ export function isForbiddenInCommit(path: string): boolean {
   const name = path.split('/').pop() ?? path
   if (name.startsWith('.env') && name !== '.env.example') return true
   if (/\.sqlite($|-)/.test(name)) return true
-  return /^(\.strutvane|docker|storage|node_modules)\//.test(path)
+  return /^(\.strutvane\/local|docker|storage|node_modules)\//.test(path)
 }
 
 /**

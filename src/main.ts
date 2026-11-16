@@ -8,7 +8,8 @@
  *
  * @module
  */
-import { resolve } from 'node:path'
+import { existsSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { ArgsError, helpText, type ParsedArgs, parseCommandLine } from './args.ts'
 import { envValueProblem } from './env-file.ts'
 import { EXIT, type ExitCode } from './exit-codes.ts'
@@ -27,7 +28,7 @@ import {
 } from './options.ts'
 import type { PortProbe } from './ports.ts'
 import { CancelledError, type Prompter } from './prompter.ts'
-import { EMPTY_LOCAL_PASSWORD_WARNING, QUESTIONS } from './question-registry.ts'
+import { EMPTY_LOCAL_PASSWORD_WARNING, QUESTIONS, settleAnswers } from './question-registry.ts'
 import { askMissing, review } from './questions.ts'
 import type { Reporter } from './reporter.ts'
 import {
@@ -36,6 +37,7 @@ import {
   projectOptions,
   type SetupState,
   SetupStateError,
+  STATE_FILE,
   saveState,
   statePath,
   withStep,
@@ -47,9 +49,14 @@ import { type ConnectionAnswers, type RunResult, runSteps } from './steps/runner
 import { secretsNeedingValues } from './steps/secrets.ts'
 import { swallowedFlagsMessage } from './swallowed-flags.ts'
 import type { TypedSecrets } from './templates/env.ts'
-import { renderProject } from './templates/project.ts'
+import { type RenderSettings, renderProject } from './templates/project.ts'
 import { VERSION } from './version.ts'
-import { type FileWriter, targetProblem, writeProjectFiles } from './write-files.ts'
+import {
+  type FileWriter,
+  targetProblem,
+  writeLocalFiles,
+  writeProjectFiles,
+} from './write-files.ts'
 
 /** The installer's version (a spike: never published). Kept in version.ts so templates can use it. */
 export { VERSION }
@@ -215,7 +222,8 @@ async function create(parsed: ParsedArgs, environment: InstallerEnvironment): Pr
     reporter.error(listProblems('These choices do not work together:', [connectionProblem]))
     return EXIT.failed
   }
-  answers = connectionProblem
+  // Defaults that need a package that is not released yet move to an available choice (#3).
+  answers = settleAnswers(connectionProblem)
   let options: ProjectOptions
   try {
     options = resolveOptions(answers, environment.cwd)
@@ -333,7 +341,10 @@ function checkGivenAnswers(
   }
   try {
     // A placeholder name checks the other answers before the name is known.
-    resolveOptions({ ...answers, name: answers.name ?? 'placeholder' }, environment.cwd)
+    resolveOptions(
+      settleAnswers({ ...answers, name: answers.name ?? 'placeholder' }),
+      environment.cwd,
+    )
   } catch (error) {
     if (error instanceof OptionsError)
       return listProblems('These options do not work together:', error.problems)
@@ -362,9 +373,9 @@ async function writeFiles(
     files = [
       // Inside the try: a template that cannot render (a value .env cannot hold) is reported like
       // any other write failure, never as a crash with a stack trace.
-      ...renderProject(options, typed),
+      ...renderProject(options, typed, renderSettings(environment)),
       // The state file is part of the same transaction: no project ever exists without it.
-      { path: '.strutvane/setup.json', content: `${JSON.stringify(state, null, 2)}\n` },
+      { path: STATE_FILE.join('/'), content: `${JSON.stringify(state, null, 2)}\n` },
     ]
     await writeProjectFiles(options.directory, files, environment.writeFile)
   } catch (error) {
@@ -374,6 +385,45 @@ async function writeFiles(
   }
   progress.done(`Files written (${files.length} files in ${options.directory})`)
   return state
+}
+
+/**
+ * `STRUT_LOCAL_PACKAGES`: a folder of local package folders used instead of the npm registry
+ * (testing unreleased packages, the ecosystem's umbrella workspace). Unset for everyone else.
+ */
+function renderSettings(environment: InstallerEnvironment): RenderSettings {
+  const local = environment.env['STRUT_LOCAL_PACKAGES']
+  return local === undefined || local === ''
+    ? {}
+    : { localPackages: resolve(environment.cwd, local) }
+}
+
+/**
+ * A fresh clone (or a deleted local file) lacks the git-ignored files setup needs: `.env` and,
+ * in Docker mode, `docker/`. Write the missing ones from the options; never overwrite one that
+ * exists (it may hold your own values).
+ */
+async function restoreLocalFiles(
+  options: ProjectOptions,
+  environment: InstallerEnvironment,
+  reporter: Reporter,
+): Promise<boolean> {
+  const missing = renderProject(options).filter(
+    (file) =>
+      (file.path === '.env' || file.path.startsWith('docker/')) &&
+      !existsSync(join(options.directory, file.path)),
+  )
+  if (missing.length === 0) return true
+  try {
+    await writeLocalFiles(options.directory, missing, environment.writeFile)
+  } catch (error) {
+    reporter.error(
+      `The local files could not be written: ${error instanceof Error ? error.message : String(error)}`,
+    )
+    return false
+  }
+  reporter.info(`Restored local files: ${missing.map((file) => file.path).join(', ')}`)
+  return true
 }
 
 /** Run the setup steps with this environment's programs, ports and clock. */
@@ -387,7 +437,7 @@ function setUp(
 ): Promise<RunResult> {
   const directory = options.directory
   const stamp = environment.now().toISOString().replace(/[:.]/g, '-')
-  const logFile = resolve(directory, '.strutvane', 'logs', `setup-${stamp}.log`)
+  const logFile = resolve(directory, '.strutvane', 'local', 'logs', `setup-${stamp}.log`)
   return runSteps(state, {
     directory,
     reporter,
@@ -487,7 +537,14 @@ async function resume(
   const reporter = environment.reporter(interactive)
   const options = projectOptions(state, directory)
   reporter.intro(`Strutvane ${VERSION}: setting up ${options.name}`)
-  reporter.info(`Progress from ${statePath(directory)}; finished steps are not run again.`)
+  if (state.resumeWith.length === 0) {
+    // A fresh clone: only strutvane.json (decision #9). This installer resumes from now on.
+    reporter.info('No setup progress on this computer: setting up from strutvane.json.')
+    state = { ...state, resumeWith: environment.resumeWith }
+  } else {
+    reporter.info(`Progress from ${statePath(directory)}; finished steps are not run again.`)
+  }
+  if (!(await restoreLocalFiles(options, environment, reporter))) return EXIT.incomplete
   state = recheckSecrets(state, directory, options, reporter)
   const typed = await typedAdminPasswordForResume(
     state,

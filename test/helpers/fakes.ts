@@ -40,7 +40,7 @@ export const CUSTOM_ANSWERS: Readonly<Record<string, unknown>> = Object.freeze({
   social: [],
   sso: false,
   apiAccess: 'tokens',
-  roles: 'basic',
+  roles: 'admin-member',
   tenantResolver: 'switcher',
   adminEmail: '',
   adminPasswordMode: 'generate',

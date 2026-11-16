@@ -28,7 +28,7 @@ const modeOf = (answers: Answers) => answers.mode ?? DEFAULTS.mode
 
 /** Should this question be asked now? */
 function shouldAsk(question: Question, answers: Answers): boolean {
-  if (!question.when(answers) || question.answered(answers)) return false
+  if (!question.visible(answers) || question.answered(answers)) return false
   return question.recommended || question.alwaysAsk || modeOf(answers) === 'custom'
 }
 
@@ -107,7 +107,9 @@ export function reviewLines(answers: Answers, cwd: string): string[] {
   const options = resolveOptions(answers, cwd)
   const lines = [`${'Folder'.padEnd(TITLE_WIDTH)}${options.directory}`]
   for (const group of QUESTION_GROUPS) {
-    const shown = QUESTIONS.filter((q) => q.group === group && q.id !== 'name' && q.when(answers))
+    const shown = QUESTIONS.filter(
+      (q) => q.group === group && q.id !== 'name' && q.visible(answers),
+    )
     if (shown.length === 0) continue
     lines.push('', group)
     for (const question of shown)
@@ -157,7 +159,7 @@ async function changeOne(
   prompter: Prompter,
   context: QuestionContext,
 ): Promise<Answers> {
-  const applicable = QUESTIONS.filter((q) => q.when(answers))
+  const applicable = QUESTIONS.filter((q) => q.visible(answers))
   const key = answerOrThrow(
     await prompter.select<AnswerKey>({
       id: 'change',

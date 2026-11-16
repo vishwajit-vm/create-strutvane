@@ -28,6 +28,11 @@ interface Row {
   readonly answer: Answers
   /** Extra answers the flag needs to be valid (an AI provider needs AI on). */
   readonly needs?: Answers
+  /**
+   * The answer brings a package that is not published yet: the row runs with
+   * `--preview-catalogue` (without it the flag is refused, decision #109; tested below).
+   */
+  readonly preview?: boolean
   readonly read: (options: ProjectOptions) => unknown
   readonly fallback: unknown
   readonly off?: { readonly when: Answers; readonly value: unknown }
@@ -81,6 +86,7 @@ const ROWS: readonly Row[] = [
   },
   {
     id: 'social',
+    preview: true,
     argv: ['--social', 'google,github'],
     answer: { social: ['google', 'github'] },
     read: (o) => o.social,
@@ -89,6 +95,7 @@ const ROWS: readonly Row[] = [
   },
   {
     id: 'sso',
+    preview: true,
     argv: ['--sso'],
     answer: { sso: true },
     needs: { teams: true },
@@ -98,6 +105,7 @@ const ROWS: readonly Row[] = [
   },
   {
     id: 'apiAccess',
+    preview: true,
     argv: ['--api', 'oauth'],
     answer: { apiAccess: 'oauth' },
     read: (o) => o.apiAccess,
@@ -106,10 +114,10 @@ const ROWS: readonly Row[] = [
   },
   {
     id: 'roles',
-    argv: ['--roles', 'extended'],
-    answer: { roles: 'extended' },
+    argv: ['--roles', 'admin-manager-member-viewer'],
+    answer: { roles: 'admin-manager-member-viewer' },
     read: (o) => o.roles,
-    fallback: 'basic',
+    fallback: 'admin-member',
     off: { when: { auth: 'none' }, value: undefined },
   },
   {
@@ -226,6 +234,7 @@ const ROWS: readonly Row[] = [
   },
   {
     id: 'cache',
+    preview: true,
     argv: ['--cache-store', 'redis'],
     answer: { cache: 'redis' },
     read: (o) => o.cache,
@@ -233,6 +242,7 @@ const ROWS: readonly Row[] = [
   },
   {
     id: 'storage',
+    preview: true,
     argv: ['--storage', 's3'],
     answer: { storage: 's3' },
     read: (o) => o.storage,
@@ -268,18 +278,21 @@ const ROWS: readonly Row[] = [
   },
   {
     id: 'features',
-    argv: ['--features', 'search,billing'],
-    answer: { features: ['search', 'billing'] },
+    preview: true,
+    argv: ['--features', 'billing,search'],
+    answer: { features: ['billing', 'search'] },
     read: (o) => o.features,
     fallback: ['log-viewer'],
   },
   {
     id: 'featureOptions',
+    preview: true,
     argv: ['--feature-option', 'billing.provider=paddle'],
     answer: { featureOptions: { 'billing.provider': 'paddle' } },
     needs: { features: ['billing'] },
     read: (o) => o.featureOptions,
-    fallback: { 'billing.provider': 'stripe' },
+    // stripe-tax applies to Stripe only, and is asked after the provider (its `when`).
+    fallback: { 'billing.provider': 'stripe', 'billing.stripe-tax': 'no' },
   },
   {
     id: 'testing',
@@ -313,14 +326,23 @@ const ROWS: readonly Row[] = [
   },
   {
     id: 'activityLog',
+    preview: true,
     argv: ['--activity-log'],
     answer: { activityLog: true },
     read: (o) => o.activityLog,
     fallback: false,
   },
-  { id: 'ai', argv: ['--ai'], answer: { ai: true }, read: (o) => o.ai, fallback: false },
+  {
+    id: 'ai',
+    preview: true,
+    argv: ['--ai'],
+    answer: { ai: true },
+    read: (o) => o.ai,
+    fallback: false,
+  },
   {
     id: 'aiProvider',
+    preview: true,
     argv: ['--ai-provider', 'ollama'],
     answer: { aiProvider: 'ollama' },
     needs: { ai: true },
@@ -330,6 +352,7 @@ const ROWS: readonly Row[] = [
   },
   {
     id: 'mcpServer',
+    preview: true,
     argv: ['--mcp-server'],
     answer: { mcpServer: true },
     read: (o) => o.mcpServer,
@@ -361,6 +384,7 @@ const ROWS: readonly Row[] = [
   },
   {
     id: 'liveUpdates',
+    preview: true,
     argv: ['--live-updates'],
     answer: { liveUpdates: true },
     read: (o) => o.liveUpdates,
@@ -369,6 +393,7 @@ const ROWS: readonly Row[] = [
   },
   {
     id: 'monitoring',
+    preview: true,
     argv: ['--monitoring', 'otel'],
     answer: { monitoring: 'otel' },
     read: (o) => o.monitoring,
@@ -406,15 +431,31 @@ describe('every question: flag, default and when-rule', () => {
   })
 
   it.each(ROWS)('$id: the flag sets the answer and the option', (row) => {
-    expect(parseCommandLine(['acme', ...row.argv]).answers).toEqual({ name: 'acme', ...row.answer })
-    const options = resolve({ ...row.needs, ...row.answer })
+    const preview: Answers = row.preview === true ? { previewCatalogue: true } : {}
+    const argv = row.preview === true ? [...row.argv, '--preview-catalogue'] : row.argv
+    expect(parseCommandLine(['acme', ...argv]).answers).toEqual({
+      name: 'acme',
+      ...row.answer,
+      ...preview,
+    })
+    const options = resolve({ ...row.needs, ...row.answer, ...preview })
     const [value] = Object.values(row.answer)
     expect(row.read(options)).toEqual(value)
   })
 
+  // featureOptions and aiProvider need another answer first (features, ai) that carries the check.
+  it.each(
+    ROWS.filter(
+      (row) => row.preview === true && !['featureOptions', 'aiProvider'].includes(row.id),
+    ),
+  )('$id: without --preview-catalogue the flag is refused with the package plan (#109)', (row) => {
+    expect(() => parseCommandLine(['acme', ...row.argv])).toThrow(/isn't available yet/)
+  })
+
   it.each(ROWS)('$id: default', (row) => {
     // Rows whose question only applies after another answer are checked with that answer.
-    expect(row.read(resolve(row.needs))).toEqual(row.fallback)
+    const preview: Answers = row.preview === true ? { previewCatalogue: true } : {}
+    expect(row.read(resolve({ ...row.needs, ...preview }))).toEqual(row.fallback)
   })
 
   it.each(ROWS.filter((row) => row.off !== undefined))(
@@ -542,6 +583,7 @@ describe('the registry as one list', () => {
       {},
       { stack: 'api', auth: 'none', database: 'sqlite' },
       {
+        previewCatalogue: true,
         teams: true,
         sso: true,
         tenantResolver: 'subdomain',
@@ -551,6 +593,7 @@ describe('the registry as one list', () => {
         devContainer: true,
       },
       {
+        previewCatalogue: true,
         docker: false,
         dbHost: 'db.local',
         dbPort: 3307,
@@ -560,6 +603,7 @@ describe('the registry as one list', () => {
         featureOptions: { 'billing.provider': 'paddle' },
       },
       {
+        previewCatalogue: true,
         auth: 'magic-link',
         uiLanguages: ['en', 'hi'],
         appearance: 'dark',
@@ -581,17 +625,27 @@ describe('the registry as one list', () => {
   })
 
   it('packages come from the answers, the framework first, each once', () => {
+    // Today only the core train is released: unpublished packages never appear by default (#3).
     expect(projectPackages(answersOf(resolve()))).toEqual([
+      '@strutvane/framework',
+      '@strutvane/auth',
+      '@strutvane/design-crisp',
+      '@strutvane/ui',
+    ])
+    expect(projectPackages(answersOf(resolve({ previewCatalogue: true })))).toEqual([
       '@strutvane/framework',
       '@strutvane/agent-tools',
       '@strutvane/auth',
       '@strutvane/design-crisp',
-      '@strutvane/logs',
+      '@strutvane/log-viewer',
       '@strutvane/ui',
     ])
+    // No sign-in: no auth package at all (decision #107).
+    expect(projectPackages(answersOf(resolve({ auth: 'none' })))).not.toContain('@strutvane/auth')
     const many = projectPackages(
       answersOf(
         resolve({
+          previewCatalogue: true,
           teams: true,
           sso: true,
           social: ['github'],

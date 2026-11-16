@@ -1,4 +1,4 @@
-// SPIKE STUB of the `node strut` command registry (spike 12 owns the real one). It implements the
+// TEST STAND-IN for the framework's `node strut` command registry (create-strutvane's tests only). It implements the
 // commands the installer calls (migrate --seed) plus dev/build/test/user:password/help (strut.js
 // itself handles setup and the Docker services:* commands), so the installer's end-to-end test exercises a real project, real files and a real
 // database.
@@ -110,9 +110,9 @@ function pick(source, keys) {
 /** Run every migration in database/migrations that has not run yet, in file-name order. */
 async function migrate(root, db) {
   await db.exec(
-    'CREATE TABLE IF NOT EXISTS strut_migrations (name VARCHAR(255) PRIMARY KEY, ran_at VARCHAR(40) NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS migrations (name VARCHAR(255) PRIMARY KEY, ran_at VARCHAR(40) NOT NULL)',
   )
-  const done = new Set(await db.column('SELECT name FROM strut_migrations'))
+  const done = new Set(await db.column('SELECT name FROM migrations'))
   const folder = join(root, 'database', 'migrations')
   const files = existsSync(folder)
     ? readdirSync(folder)
@@ -128,7 +128,7 @@ async function migrate(root, db) {
     await definition.up(schema)
     for (const statement of schema.statements) await db.exec(statement)
     await db.exec(
-      `INSERT INTO strut_migrations (name, ran_at) VALUES (${sqlValue(name)}, ${sqlValue(new Date().toISOString())})`,
+      `INSERT INTO migrations (name, ran_at) VALUES (${sqlValue(name)}, ${sqlValue(new Date().toISOString())})`,
     )
     process.stdout.write(`  ran  ${name}\n`)
     ran += 1
@@ -169,18 +169,18 @@ function assertDevelopment(env) {
   }
 }
 
-/** Run database/seeders/database-seeder.ts with tiny, idempotent helpers. */
+/** Run database/seeders/database.seeder.ts, whose call([...]) runs the listed seeders. */
 async function seed(root, db, env) {
   assertDevelopment(env)
-  const file = join(root, 'database', 'seeders', 'database-seeder.ts')
+  const file = join(root, 'database', 'seeders', 'database.seeder.ts')
   if (!existsSync(file)) return
   const { default: seeder } = await import(pathToFileURL(file).href)
   const verb = { sqlite: 'INSERT OR IGNORE', mysql: 'INSERT IGNORE', postgres: 'INSERT' }[
     db.dialect
   ]
   const tail = db.dialect === 'postgres' ? ' ON CONFLICT DO NOTHING' : ''
-  await seeder.run({
-    env,
+  const handle = {
+    ...db,
     insertOrIgnore: async (table, row) => {
       const columns = Object.keys(row).join(', ')
       const values = Object.values(row).map(sqlValue).join(', ')
@@ -212,7 +212,15 @@ async function seed(root, db, env) {
           `  One-time password (shown once, change it at first sign-in): ${password}\n`,
         )
     },
-  })
+  }
+  const context = {
+    db: handle,
+    env,
+    call: async (list) => {
+      for (const definition of list) await definition.run(context)
+    },
+  }
+  await seeder.run(context)
   process.stdout.write('Database seeded\n')
 }
 
@@ -352,7 +360,7 @@ const HELP = `Usage: node strut <command>
   setup                  Finish or repeat setup (what npm run setup calls)
   services:up / services:down / services:status
                          Docker mode: start / stop / list the containers (data is kept)
-  help                   Show this list
+  list                   Show this list (help is an alias)
 
 Coming with the framework (the spike's stand-in exits with code 2 and changes nothing):
   design:use <name>, token:create, docker:prod, add, install:<name>, user:create, make:model
@@ -392,11 +400,12 @@ async function withDatabase(root, env, role, work) {
 
 /** Entry point used by strut.js. Returns the exit code. */
 export async function run(argv, { root }) {
-  const [command = 'help', ...rest] = argv
+  const [given = 'list', ...rest] = argv
+  const command = given === 'help' ? 'list' : given
   const env = readEnv(root)
   try {
     switch (command) {
-      case 'help':
+      case 'list':
         process.stdout.write(HELP)
         return 0
       case 'migrate':

@@ -13,8 +13,10 @@ import { resolve } from 'node:path'
 import {
   type Catalogue,
   type CatalogueEntry,
-  findOffered,
   installerCatalogue,
+  offeredEntries,
+  plannedRelease,
+  resolveFollowUps,
 } from './catalogue.ts'
 import { envValueProblem } from './env-file.ts'
 import { sqlIdentifier } from './names.ts'
@@ -116,8 +118,11 @@ export const API_ACCESS = ['tokens', 'oauth', 'none'] as const
 /** One of {@link API_ACCESS}. */
 export type ApiAccess = (typeof API_ACCESS)[number]
 
-/** Starting roles (question 10): admin + member, or admin + manager + member + viewer. */
-export const ROLE_SETS = ['basic', 'extended'] as const
+/**
+ * Starting roles (question 10), named after the roles they create (decision #27): admin + member,
+ * or admin + manager + member + viewer.
+ */
+export const ROLE_SETS = ['admin-member', 'admin-manager-member-viewer'] as const
 /** One of {@link ROLE_SETS}. */
 export type RoleSet = (typeof ROLE_SETS)[number]
 
@@ -327,6 +332,11 @@ export interface Answers {
   readonly deploy?: DeployTarget | undefined
   readonly editor?: boolean | undefined
   readonly devContainer?: boolean | undefined
+  /**
+   * Not a question: the `--preview-catalogue` developer flag. Offers packages that are not
+   * published (or not compatible) yet, so unreleased packages can be tried (decisions #3, #109).
+   */
+  readonly previewCatalogue?: boolean | undefined
 }
 
 /** The keys of {@link Answers}, used to ask, change and summarise answers one at a time. */
@@ -431,6 +441,8 @@ export interface ProjectOptions {
   readonly editor: boolean
   /** A committed `.devcontainer/` for Codespaces (opt-in, ADR-0021). */
   readonly devContainer: boolean
+  /** Unreleased packages were allowed (`--preview-catalogue`); kept so a resume offers the same. */
+  readonly previewCatalogue: boolean
 }
 
 /** The shape of {@link DEFAULTS}: one default per question that has a fixed one. */
@@ -493,7 +505,7 @@ export const DEFAULTS: Defaults = Object.freeze({
   social: Object.freeze([] as const),
   sso: false,
   apiAccess: 'tokens',
-  roles: 'basic',
+  roles: 'admin-member',
   teams: false,
   tenantResolver: 'switcher',
   database: 'mysql',
@@ -780,6 +792,7 @@ export function resolveOptions(
     answers.features,
     answers.featureOptions,
     catalogue,
+    answers.previewCatalogue === true,
     problems,
   )
   const git = gitOf(answers)
@@ -874,6 +887,7 @@ export function resolveOptions(
     deploy: answers.deploy ?? DEFAULTS.deploy,
     editor: answers.editor ?? DEFAULTS.editor,
     devContainer: answers.devContainer ?? DEFAULTS.devContainer,
+    previewCatalogue: answers.previewCatalogue === true,
   })
 }
 
@@ -983,44 +997,32 @@ function checked(
 }
 
 /**
- * Extra features: every id must be offered by the catalogue (published and compatible), and
- * every follow-up answer must belong to a picked feature and be one of its choices. Follow-ups
- * left unanswered take the package's declared default.
+ * Extra features: every id must be offered by the catalogue (published and compatible, or any
+ * listed package with `--preview-catalogue`), and every follow-up answer must belong to a picked
+ * feature and fit its question. Follow-ups left unanswered take the package's declared default.
  */
 function resolveFeatures(
   given: readonly string[] | undefined,
   givenOptions: FeatureOptions | undefined,
   catalogue: Catalogue,
+  preview: boolean,
   problems: string[],
 ): { features: readonly string[]; featureOptions: FeatureOptions } {
+  const offered = offeredEntries(catalogue, { preview })
   const picked = new Set(given ?? DEFAULTS.features)
-  const entries: CatalogueEntry[] = []
   for (const id of picked) {
-    const entry = findOffered(id, catalogue)
-    if (entry === undefined) {
-      // A default the catalogue no longer offers is quietly dropped; only a typed pick is an error.
-      if (given !== undefined)
-        problems.push(
-          `--features "${id}" is not an available package (unknown, unpublished, or not for this framework version). Search with: node strut add`,
-        )
-    } else {
-      entries.push(entry)
+    // A default the catalogue does not offer (yet) is quietly dropped; only a typed pick is an error.
+    if (given !== undefined && !offered.some((entry) => entry.id === id)) {
+      problems.push(featureProblem(id, catalogue))
     }
   }
   // Catalogue order, so the result never depends on the order the ids were typed.
-  const ordered = catalogue.entries.filter((entry) => entries.includes(entry))
+  const ordered = offered.filter((entry) => picked.has(entry.id))
   const featureOptions: Record<string, string> = {}
   for (const entry of ordered) {
-    for (const followUp of entry.followUps) {
-      const key = `${entry.id}.${followUp.id}`
-      const value = givenOptions?.[key] ?? followUp.default
-      if (!followUp.choices.some((choice) => choice.value === value)) {
-        problems.push(
-          `--feature-option ${key}=${value} is not a choice. Use one of: ${followUp.choices.map((c) => c.value).join(', ')}`,
-        )
-      }
-      featureOptions[key] = value
-    }
+    const resolved = resolveFollowUps(entry, givenOptions ?? {})
+    problems.push(...resolved.problems)
+    Object.assign(featureOptions, resolved.values)
   }
   for (const key of Object.keys(givenOptions ?? {})) {
     if (!(key in featureOptions))
@@ -1030,6 +1032,25 @@ function resolveFeatures(
     features: Object.freeze(ordered.map((entry) => entry.id)),
     featureOptions: Object.freeze(featureOptions),
   }
+}
+
+/** Why a typed feature id cannot be picked, in the words of decision #109. */
+function featureProblem(id: string, catalogue: Catalogue): string {
+  const entry: CatalogueEntry | undefined = catalogue.entries.find(
+    (candidate) => candidate.id === id,
+  )
+  if (
+    entry === undefined ||
+    entry.kind !== 'package' ||
+    entry.deprecated ||
+    entry.status === 'shelved'
+  ) {
+    return `--features "${id}" is not a package in the catalogue. Search with: node strut add`
+  }
+  if (!entry.published) {
+    return `--features "${id}": ${entry.package} isn't available yet (planned for ${plannedRelease(entry.phase)}). Try unreleased packages with --preview-catalogue.`
+  }
+  return `--features "${id}": ${entry.package} has no version for this framework version yet.`
 }
 
 /** The default port of each server database. */

@@ -11,7 +11,7 @@
  */
 import { type ParseArgsOptionsConfig, parseArgs } from 'node:util'
 import type { Answers } from './options.ts'
-import { QUESTION_GROUPS, QUESTIONS } from './question-registry.ts'
+import { availabilityProblems, QUESTION_GROUPS, QUESTIONS } from './question-registry.ts'
 
 /** What the user asked the installer to do. */
 export type Command = 'create' | 'resume' | 'help' | 'version'
@@ -68,6 +68,8 @@ const OTHER_FLAGS = {
   help: { type: 'boolean', short: 'h' },
   version: { type: 'boolean', short: 'v' },
   resume: { type: 'string' },
+  // Developer flag: offer packages that are not published yet (decisions #3, #109).
+  'preview-catalogue': { type: 'boolean' },
   // Old names of renamed flags (see RENAMED_FLAGS).
   auth: { type: 'string' },
   ci: { type: 'boolean' },
@@ -130,6 +132,9 @@ export function parseCommandLine(argv: readonly string[]): ParsedArgs {
   }
   const name = pickName(stringValue(values['name']), positionals, problems)
   if (name !== undefined) answers = { ...answers, name }
+  if (values['preview-catalogue'] === true) answers = { ...answers, previewCatalogue: true }
+  // A flag that brings a package that is not published yet is refused, with its plan (#109).
+  problems.push(...availabilityProblems(answers))
 
   if (problems.length > 0) throw new ArgsError(problems)
   return {
@@ -235,6 +240,8 @@ Other options
   --dev / --no-dev           Start npm run dev at the end (default: ask)
   -h, --help                 Show this help
   -v, --version              Show the version
+  --preview-catalogue        Developer flag: also offer packages that are not released yet
+                             (without it, a flag for such a package is refused with its plan)
 
 Exit codes: 0 ready, 1 nothing created, 2 created but setup unfinished (run npm run setup),
 130 cancelled.

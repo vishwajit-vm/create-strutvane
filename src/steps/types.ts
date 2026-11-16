@@ -86,7 +86,7 @@ export interface StepContext {
   /** The container CLI (`docker`, or `STRUT_CONTAINER_CLI`). */
   readonly dockerCommand: string
   readonly isPortFree: PortProbe
-  /** The setup log every command appends to (`.strutvane/logs/setup-<time>.log`). */
+  /** The setup log every command appends to (`.strutvane/local/logs/setup-<time>.log`). */
   readonly logFile: string
   readonly sleep: (ms: number) => Promise<void>
   readonly reporter: Reporter

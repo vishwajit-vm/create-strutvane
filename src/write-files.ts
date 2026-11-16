@@ -94,6 +94,21 @@ export async function writeProjectFiles(
   }
 }
 
+/**
+ * Write a few files into an existing project (a fresh clone's missing `.env`, say). Never
+ * overwrites: a file that appeared in the meantime makes the write fail instead.
+ *
+ * @example
+ * await writeLocalFiles('C:/code/my-app', [{ path: '.env', content }])
+ */
+export async function writeLocalFiles(
+  directory: string,
+  files: readonly GeneratedFile[],
+  write: FileWriter = diskWriter,
+): Promise<void> {
+  for (const file of files) await write(join(directory, file.path), file.content)
+}
+
 /** Put the folder back the way it was: removed if we created it, emptied if it was empty. */
 async function rollBack(directory: string, existed: boolean): Promise<void> {
   if (!existed) {
