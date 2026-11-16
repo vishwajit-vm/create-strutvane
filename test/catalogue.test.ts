@@ -85,7 +85,7 @@ describe('semver ranges (fail closed)', () => {
     ['0.1.0', '', false],
     // A pre-release framework satisfies no catalogue range (ranges name releases only).
     ['0.1.0-rc.1', '^0.1', false],
-    [FRAMEWORK_VERSION, '^0.1', false],
+    [FRAMEWORK_VERSION, '^0.2', false],
   ] as const)('%s in %s → %s', (version, range, expected) => {
     expect(satisfiesRange(version, range)).toBe(expected)
   })

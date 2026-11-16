@@ -117,7 +117,7 @@ describe('strutvane.json', () => {
           ]
           for (const absorbed of ABSORBED_PACKAGES) expect(named).not.toContain(absorbed)
           expect(named).toContain('@strutvane/framework')
-          expect(manifest['dependencies']?.['@strutvane/framework']).toBe('^0.1.0-next.1')
+          expect(manifest['dependencies']?.['@strutvane/framework']).toBe('^0.2.0-next.0')
         },
       ),
       { numRuns: 200 },

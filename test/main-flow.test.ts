@@ -2,11 +2,13 @@
  * The whole installer in-process: flags/CI mode, interactive mode, cancel, preflight errors and
  * the all-or-nothing file write. External programs are faked; files are real (temp folders).
  */
+
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { checkNodeVersion, main } from '../src/main.ts'
 import { CANCEL } from '../src/prompter.ts'
+import { releaseTag } from '../src/version.ts'
 import {
   describeCall,
   FAKE_NODE,
@@ -108,7 +110,7 @@ describe('CI mode (--yes and flags)', () => {
     )
     // The same project without questions: every question's flag, from the registry.
     expect(output()).toMatch(
-      /npm create strutvane@latest acme -- --stack full --design crisp --ui admin --sign-in email --security 2fa,verification .* --no-teams --db mysql --docker .*--testing vitest --git --ci-workflow .*--deploy later --editor --no-dev-container --yes/,
+      /npm create strutvane@(?:next|latest) acme -- --stack full --design crisp --ui admin --sign-in email --security 2fa,verification .* --no-teams --db mysql --docker .*--testing vitest --git --ci-workflow .*--deploy later --editor --no-dev-container --yes/,
     )
     expect(output()).toMatch(/Mail inbox\s+http:\/\/localhost:8025/)
     const state: unknown = JSON.parse(
@@ -170,7 +172,7 @@ describe('CI mode (--yes and flags)', () => {
   it('needs a name when there are no questions', async () => {
     const { environment, output } = fakeEnvironment({ cwd: tempFolder(), argv: ['--yes'] })
     expect(await main(environment)).toBe(1)
-    expect(output()).toContain('npm create strutvane@latest my-app -- --yes')
+    expect(output()).toContain(`npm create strutvane@${releaseTag()} my-app -- --yes`)
   })
 
   it('stops on flags npm swallowed, with the corrected command, before writing anything', async () => {
@@ -181,7 +183,7 @@ describe('CI mode (--yes and flags)', () => {
       env: { npm_config_user_agent: NPM_AGENT, npm_config_db: 'sqlite' },
     })
     expect(await main(environment)).toBe(1)
-    expect(output()).toContain('npm create strutvane@latest acme -- --db sqlite')
+    expect(output()).toContain(`npm create strutvane@${releaseTag()} acme -- --db sqlite`)
     expect(existsSync(join(cwd, 'acme'))).toBe(false)
   })
 

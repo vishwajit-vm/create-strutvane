@@ -35,7 +35,7 @@ export function localPackages(extra: readonly string[] = []): string {
     mkdirSync(folder, { recursive: true })
     writeFileSync(
       join(folder, 'package.json'),
-      `${JSON.stringify({ name, version: '0.1.0-next.1', private: true, type: 'module', exports: { '.': './index.js' } }, null, 2)}\n`,
+      `${JSON.stringify({ name, version: '0.2.0-next.0', private: true, type: 'module', exports: { '.': './index.js' } }, null, 2)}\n`,
     )
     writeFileSync(
       join(folder, 'index.js'),

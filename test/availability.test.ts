@@ -8,7 +8,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { parseCommandLine } from '../src/args.ts'
+import { helpText, parseCommandLine } from '../src/args.ts'
 import { type Answers, resolveOptions } from '../src/options.ts'
 import {
   availabilityProblems,
@@ -177,5 +177,24 @@ describe('the generated config/cors.ts, run for real', () => {
     expect(parseCorsOrigins(' https://a.example , https://b.example ', 'production')).toEqual({
       origins: ['https://a.example', 'https://b.example'],
     })
+  })
+})
+
+describe('--help and unreleased packages', () => {
+  it('shows only released choices in each flag, and lists the waiting flags apart', () => {
+    const help = helpText('0.0.0')
+    expect(help).toMatch(/--testing vitest\|none /)
+    expect(help).toMatch(
+      /Not released yet \(refused with their plan; try them with --preview-catalogue\):/,
+    )
+    const waiting = help.slice(help.indexOf('Not released yet'))
+    for (const flag of [
+      '--testing vitest-playwright',
+      '--cache-store redis',
+      '--sso',
+      '--features <id>',
+    ]) {
+      expect(waiting).toContain(flag)
+    }
   })
 })

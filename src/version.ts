@@ -22,17 +22,17 @@ export const VERSION: string = manifest.version
  * absorbed core, contracts, cli and devkit (hub release/0.2/patches, B7). Generated apps name only
  * this package and the ones the answers bring, never an absorbed one.
  *
- * Why a caret range on a pre-release: `^0.1.0-next.1` accepts the later pre-releases of 0.1.0 and
- * the 0.1.x releases, so an app created today keeps installing when 0.1.0 itself ships.
+ * Why a caret range on a pre-release: `^0.2.0-next.0` accepts the later pre-releases of 0.2.0 and
+ * the 0.2.x releases, so an app created today keeps installing when 0.2.0 itself ships.
  */
-export const FRAMEWORK_RANGE = '^0.1.0-next.1'
+export const FRAMEWORK_RANGE = '^0.2.0-next.0'
 
 /**
  * The framework version catalogue ranges are checked against: the lowest version
  * {@link FRAMEWORK_RANGE} accepts. A pre-release satisfies no catalogue range (they name releases
  * only), so add-ons are offered once the framework they declare is released (fail closed).
  */
-export const FRAMEWORK_VERSION = '0.1.0-next.1'
+export const FRAMEWORK_VERSION = '0.2.0-next.0'
 
 /**
  * The core train (blueprint §3.3 item 5): framework, auth, ui and the first-party designs are
@@ -80,3 +80,16 @@ export const DRIVERS: Readonly<Record<'mysql' | 'postgres', PinnedPackage>> = Ob
 
 /** The test runner generated apps use (Vitest, decision #76), pinned exactly. */
 export const VITEST: PinnedPackage = Object.freeze({ name: 'vitest', version: '5.1.0' })
+
+/**
+ * The npm dist-tag this installer is published under: pre-releases go to `next` (ADR-0018), so a
+ * command printed by a pre-release must say `@next`; `@latest` would fetch another version (or,
+ * before 1.0, the name placeholder). Every printed `npm create` / `npx` command uses this.
+ *
+ * @example
+ * releaseTag('0.2.0-next.0') // 'next'
+ * releaseTag('1.0.0')        // 'latest'
+ */
+export function releaseTag(version: string = VERSION): 'next' | 'latest' {
+  return version.includes('-') ? 'next' : 'latest'
+}

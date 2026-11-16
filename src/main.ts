@@ -50,7 +50,7 @@ import { secretsNeedingValues } from './steps/secrets.ts'
 import { swallowedFlagsMessage } from './swallowed-flags.ts'
 import type { TypedSecrets } from './templates/env.ts'
 import { type RenderSettings, renderProject } from './templates/project.ts'
-import { VERSION } from './version.ts'
+import { releaseTag, VERSION } from './version.ts'
 import {
   type FileWriter,
   targetProblem,
@@ -337,7 +337,7 @@ function checkGivenAnswers(
   interactive: boolean,
 ): string | undefined {
   if (answers.name === undefined && !interactive) {
-    return 'A project name is needed when there are no questions (--yes, CI or no terminal). For example:\n\n  npm create strutvane@latest my-app -- --yes'
+    return `A project name is needed when there are no questions (--yes, CI or no terminal). For example:\n\n  npm create strutvane@${releaseTag()} my-app -- --yes`
   }
   try {
     // A placeholder name checks the other answers before the name is known.

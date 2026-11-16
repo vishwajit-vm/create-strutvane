@@ -12,6 +12,7 @@
  * @module
  */
 import { QUESTIONS } from './question-registry.ts'
+import { releaseTag } from './version.ts'
 
 /** One of our flags, found in npm's environment instead of our arguments. */
 export interface SwallowedFlag {
@@ -173,9 +174,9 @@ export function swallowedFlagsMessage(
     ...words,
     'With npm create, options go after "--". Run this instead:',
     '',
-    `  npm create strutvane@latest ${name} -- ${flags}`,
+    `  npm create strutvane@${releaseTag()} ${name} -- ${flags}`,
     '',
-    `Or without the "--" rule:  npx create-strutvane@latest ${name} ${flags}`,
+    `Or without the "--" rule:  npx create-strutvane@${releaseTag()} ${name} ${flags}`,
     '',
     'The old names --auth and --ci are taken by npm without a trace: use --sign-in and --ci-workflow (or put them after "--").',
   ].join('\n')

@@ -12,6 +12,7 @@
 import { type ParseArgsOptionsConfig, parseArgs } from 'node:util'
 import type { Answers } from './options.ts'
 import { availabilityProblems, QUESTION_GROUPS, QUESTIONS } from './question-registry.ts'
+import { releaseTag } from './version.ts'
 
 /** What the user asked the installer to do. */
 export type Command = 'create' | 'resume' | 'help' | 'version'
@@ -196,6 +197,22 @@ function pickName(
   return flag ?? positional
 }
 
+/** Wrap a comma list at 96 columns, indented by two spaces. */
+function wrap(text: string): string {
+  const lines: string[] = []
+  let line = ''
+  for (const word of text.split(' ')) {
+    if (line !== '' && line.length + word.length + 1 > 94) {
+      lines.push(`  ${line}`)
+      line = word
+    } else {
+      line = line === '' ? word : `${line} ${word}`
+    }
+  }
+  if (line !== '') lines.push(`  ${line}`)
+  return lines.join('\n')
+}
+
 /** One `--help` line: the flag, what it does, and its default (long flags wrap). */
 function helpLine(usage: string, help: string, defaultLabel: string): string {
   const fallback = defaultLabel === '' ? '' : `  [${defaultLabel}]`
@@ -220,19 +237,25 @@ export function helpText(version: string): string {
     )
     return lines.length === 0 ? '' : `${group}\n${lines.join('\n')}\n`
   }).filter((block) => block !== '')
+  // Flags whose packages are not released yet (decisions #3, #109), straight from the registry.
+  const waiting = QUESTIONS.flatMap((q) => q.unreleased?.({}) ?? [])
+  const unreleased =
+    waiting.length === 0
+      ? ''
+      : `Not released yet (refused with their plan; try them with --preview-catalogue):\n${wrap(waiting.join(', '))}\n\n`
   const secrets = QUESTIONS.filter((q) => q.secretEnv !== undefined).map(
     (q) => `  ${q.secretEnv ?? ''}`.padEnd(29) + q.title,
   )
   return `create-strutvane ${version}: create a new Strutvane app
 
 Usage
-  npm create strutvane@latest my-app
-  npm create strutvane@latest my-app -- --db postgres --yes   (npm needs -- before flags)
-  npx create-strutvane@latest my-app --db postgres --yes      (npx does not)
+  npm create strutvane@${releaseTag(version)} my-app
+  npm create strutvane@${releaseTag(version)} my-app -- --db postgres --yes   (npm needs -- before flags)
+  npx create-strutvane@${releaseTag(version)} my-app --db postgres --yes      (npx does not)
 
 Questions you can answer with flags (default in [brackets])
 ${groups.join('\n')}
-Secrets are never flags (shell history and CI logs keep flags). Without a terminal they come from:
+${unreleased}Secrets are never flags (shell history and CI logs keep flags). Without a terminal they come from:
 ${secrets.join('\n')}
 
 Other options

@@ -10,80 +10,45 @@ The file below is synced from strutvane-tooling and is identical in every repo. 
 
 ## What this repo is
 
-Start a new Strutvane project in one command: `npm create strutvane@next` (pre-releases are published under the `next` dist-tag; it becomes `@latest` at 1.0). Presets for full-stack (API + UI + auth), API-only and UI-only, with configs, .env/.env.example, local Docker services, tests and CI ready.
-
-It is one repo of the **Strutvane** polyrepo ecosystem (one GitHub repo per package; see ADR-0002). The hub with the full blueprint is https://github.com/vishwajit-vm/strutvane. Locally it is the umbrella folder two levels up: `../../docs/`.
+The v2 installer: `npm create strutvane@next my-app` (`@latest` from 1.0) (hub blueprint `docs/18-v2-blueprint.md` §2.1–§2.2, Laravel's flow on npm). Questions (or flags) → review → files → secrets → ports → database → install → migrate + seed → git → `npm run dev`. It is the hub's spike 13 ported to production, with the consistency decisions of `spikes/CONSISTENCY-2026-11-15.md` applied.
 
 ## Status
 
-- **Phase 1: implemented, version `0.1.0-next.0`, not released.** Changesets is in pre mode (`next`).
-- `@strutvane/contracts`, `core` and `devkit` are not published yet, so `pnpm-workspace.yaml` has **temporary** `link:../…` overrides. Remove them once those `0.1.0-next.0` versions are on npm (ADR-0016; `check-deps` flags them until then).
-- The source of truth for decisions is `../../docs/00-executive-summary.md` (D1–D24). If anything here conflicts with it, that file wins.
-- The package spec is `../../docs/05-developer-experience.md` §2–3 (online: https://github.com/vishwajit-vm/strutvane/blob/main/docs/05-developer-experience.md).
+- **v2, `0.2.0-next.N`, lockstep with the core train (decision #128).** Changesets is in pre mode (`next`); changesets are `minor` before 1.0. Printed commands use `releaseTag()` (`@next` for a pre-release). The release gates are hub `docs/19-production-readiness.md` (R1–R9); evidence goes in `RELEASE-READINESS.md`.
+- Generated apps depend on `@strutvane/framework` `^0.2.0-next.0` (and the core train at the same range). Until those are on npm, real installs stop at the install step; the end-to-end tests use local stand-ins (`STRUT_LOCAL_PACKAGES`, `test/fixtures/packages`).
+- npm only (`npm ci`, `npm run ci`); no pnpm.
 
 ## Code map (`src/`, one concept per file)
 
 | File | Role |
 |---|---|
-| `options.ts` | Every rule about which choices go together → one frozen `ProjectOptions`. Collects every problem. |
-| `validate-name.ts` | npm- and Windows-safe project names. |
-| `args.ts` | Hand-written flag parser (optional-value flags like `--docker[=mode]`). Parses only; `options.ts` validates. |
-| `prompts.ts` | `Prompter` interface + clack adapter; asks only what flags didn't give. Cancel → `CancelledError`. |
-| `env-spec.ts` | ONE description of the app's env vars, which drives `.env`, `.env.example`, `env.schema.ts` and the README table. |
-| `auth-roles.ts` | Default role map for `config/auth.ts` (docs/07 §2.7, §4.4; enforced by `@strutvane/auth`): `admin` (user grants `scope: 'global'`), `member`, `viewer`, `owner` with tenancy (`scope: 'tenant'`), and the resources wildcards never match. `test/security-defaults.test.ts` pins it to the spec. |
-| `templates/*.ts` | Plain functions options → files (no template engine, no eval). `util.ts` has `lines`, a Biome-compatible `json`. |
-| `render.ts` | Assembles every template; pure; refuses duplicate paths. |
-| `generate.ts` | Writes through devkit's staged fs + env editor; target check, rollback/cleanup, dry run, show-once secrets. |
-| `post.ts` | `git init` + first commit, optional install; injectable `CommandRunner`; never throws. |
-| `next-steps.ts` | The "Next steps" note: no `cd` when the target is the current folder; a Corepack fallback line for pnpm. |
-| `release-channel.ts` | The dist-tag of our own version (`0.1.0-next.0` → `next`), so help text prints a create command that has a binary. |
-| `main.ts` / `cli.ts` | The CLI flow (exit codes 0/1/130) behind an injectable `Ui`; `cli.ts` only wires the process. |
-| `versions.ts` | Every version written into generated projects (exact pins, SHA-pinned actions). |
+| `question-registry.ts` | ONE array of every question (id, group, flag, default, `when`, packages, ★). Engine, flags, help, review, resume, package list and availability all loop over it |
+| `options.ts` | Defaults and the rules about which answers go together → frozen `ProjectOptions` |
+| `catalogue.ts` (+ `catalogue/`) | Internal adapter for the hub's format-2 `catalogue.json` (untrusted input), "published and compatible", `--preview-catalogue`, follow-up questions |
+| `version.ts` | Every version written into apps: framework range, core train, absorbed packages (never generated), drivers, Vitest |
+| `questions.ts` | Asks what is missing (visible questions only), review screen, "Change an answer" |
+| `args.ts`, `swallowed-flags.ts` | Flags (from the registry), and npm's swallowed-flag detection |
+| `main.ts`, `cli.ts` | The flow, `--resume` (also a fresh clone from `strutvane.json`); `cli.ts` only wires the process |
+| `setup-state.ts` | `.strutvane/local/setup.json`, or `strutvane.json` for a fresh clone |
+| `steps/*` | files, secrets, ports, database (Docker or your own server), install, migrate, git; recovery choices |
+| `templates/*` | Pure functions answers → files (`project.ts`, `app-files.ts`, `env.ts`, `compose.ts`, `workflow-files.ts`) |
+| `templates/strut.js` (repo root `templates/`) | The generated `strut.js`, shipped as a plain file and found through `package-root.ts` |
 
 ## Key behaviours to keep (tests enforce them)
 
-- Generated projects pass `tsc`, `biome check` (their own config) and their own Vitest suite, for every combo in `test/combos.ts`. Templates must emit **already-Biome-formatted** code: if you change one, run the e2e test.
-- Golden files: `test/__golden__/*.txt`. Update with `corepack pnpm@12.18.0 exec vitest run -u` and review the diff like code.
-- `.env.example` never holds a secret; `.env`, `.env.example` and `env.schema.ts` list the same keys in the same order.
-- Only `SEED_ADMIN_PASSWORD` is printed (once), and only in an interactive, non-CI, non-`--yes` run. Other secrets stay in `.env`.
-- `.env.example` gets safe defaults (`EnvSpecVar.example`: `APP_DEBUG=false`, `API_DOCS=false`); the generated `env.schema.ts` refusals (debug outside local, `*` CORS, non-https in production) are executed in `test/security-defaults.test.ts`.
-- `.strutvane/`: `lock.json`, `base/`, `templates/` (and `README.md`) are committed, everything else ignored (ADR-0012). `.gitignore`, `.strutvane/README.md` and the generated docs must agree.
-- `docker/` is git-ignored unless `--docker=commit` (checked with `git check-ignore`).
-- Nothing is written before every question is answered; a non-empty target is never touched.
-- Unpublished packages (framework, auth, logs) and browser tooling are stubbed in `test/helpers.ts` (`STUBS`) for the type-check. Keep the stubs to exactly what templates use. In the local workspace layout, `config/auth.ts` is also type-checked against the real `../auth/dist` types (`typecheckAuthConfig`), and `web/` against the real `../ui/dist` typings (`typecheckWeb`). `web/app.tsx` renders `<StrutvaneApp>` (the ui app shell; `auth={false}` without auth, `credentials="include"` for the ui preset) and `web/router.tsx` exports `RouteDefinition[]`: both need the ui release after 0.1.0-next.0 (see `STRUTVANE_VERSION` in `versions.ts`).
-- `test/bin.test.ts` builds with `tsdown.config.ts` into `build/` (git-ignored) and checks every `bin` target: exists, `#!` shebang, runs.
-- `persistentIdentity()` (options.ts): auth on + PostgreSQL + `AUTH_SESSION_DRIVER=database`. Then the app depends on `better-auth` (exactly `@strutvane/auth`'s optional peer; a test compares it with `../auth/package.json`) and `sv migrate` creates the auth tables (a package migration of `@strutvane/auth`): no separate step. `AUTH_SESSION_DRIVER` accepts exactly what auth implements (`AUTH_SESSION_DRIVERS` in options.ts: `database`, `memory`).
-- No `app/models/user.model.ts`: accounts belong to `@strutvane/auth` (the actor id is the link); `app/models/README.md` explains a profile model keyed by `userId`. docs/07 §6 (`extendModel(UserModel)`) is not built yet.
-- pnpm projects get `pnpm-workspace.yaml` (`allowBuilds: esbuild`, `minimumReleaseAgeExclude` for `@strutvane/*` and `strutvane`): pnpm 12 fails installs on unapproved build scripts. npm, Yarn and Bun need no equivalent (see `pnpmWorkspace` in `templates/root.ts`).
-- The `sv` script calls `strutvane-cli` (the project-local CLI) so `sv help` shows project commands; `test/templates.test.ts` checks that bin name against `../cli`.
-
-## Boundaries (non-negotiable)
-
-- Allowed dependencies: A minimal runtime (prompts and templating). It renders templates and then runs the selected package installers through `@strutvane/devkit`.
-- Cooperation with other Strutvane packages happens **only through `@strutvane/contracts`**, resolved at runtime via the core container.
-- Public API changes need a changeset, docs and tests. Contract changes need an RFC.
+- Generated apps never name `@strutvane/core`, `contracts`, `cli`, `devkit` or `logs` (property test + a fail-closed guard in `templates/project.ts`).
+- A question that brings a package is visible only when the package is published and compatible; its flag is refused with the plan otherwise (decisions #3, #109). The core train is always available.
+- Secrets never reach a flag, `strutvane.json`, `setup.json`, `.env.example`, the review or the log.
+- File names: models plain, everything else dot-suffixed (`user.policy.ts`, `database.seeder.ts` with `strut:seeders` markers). Vitest tests. `DB_CONNECTION=pgsql`. `/up` JSON. `migrations` table. SQLite at `database/database.sqlite`.
+- The end-to-end suites use throw-away, uniquely named containers and remove them; never touch other stacks.
 
 ## Commands
 
-- `corepack pnpm@12.18.0 run ci`: lint → typecheck → tests + coverage (90/90/85/90) → build
-- `node src/cli.ts my-app --dry-run`: try the CLI from source (Node strips types)
+- `npm run ci`: lint → typecheck → tests + coverage (90/90/85/90) → build
+- `node src/cli.ts my-app --db sqlite --yes`: try it from source
 
 ## Conventions
 
-- TypeScript strict, ESM only, Node 24+ (Node 26 LTS is the target). No decorators or reflection.
-- Validation uses Standard Schema with Zod 4 as the default. Errors are RFC 9457 problem+json.
-- Tooling: pnpm, tsdown (build), Biome (lint/format), Vitest (tests), Playwright (UI e2e), Testcontainers (DB).
-- Code generation and AST work pin the TypeScript 6 compiler API (`@typescript/typescript6`), because TypeScript 7 has no compiler API.
-- Releases: Changesets, npm trusted publishing (OIDC) with provenance. Core packages share a major release train.
-- **Docker is local-only and never committed** (ADR-0006). Never commit `.env`; keep `.env.example` complete and documented.
-- Windows, macOS and Linux are all first-class. Use no bash-only scripts.
-
-## Definition of done (for any change)
-
-Code, tests, docs and a changeset ship together. Security implications are noted. The CLI help or reference is updated if commands changed.
-
-## Where things are
-
-- `.claude/skills/`: task playbooks for this package (invoke by name)
-- `.claude/agents/`: specialised reviewer subagents
-- `.claude/commands/`: slash commands (`/spec`, `/pre-pr`)
+- TypeScript strict, ESM only, Node 24.3+. No `any`, no non-null assertions.
+- Runtime dependencies: `@clack/prompts` only (decision B8: no framework dependency; the installer runs before any app exists and must stay small).
+- Windows, macOS and Linux are first-class: programs run without a shell (`node npm-cli.js`), PATH lookups use absolute entries only.

@@ -145,7 +145,7 @@ function rangeOf(name: string, options: ProjectOptions): string {
  * would install a second kernel (integration finding C1), so meeting one is a bug, not a choice.
  *
  * @example
- * dependencies(options)['@strutvane/framework'] // '^0.1.0-next.1'
+ * dependencies(options)['@strutvane/framework'] // '^0.2.0-next.0'
  */
 export function dependencies(
   options: ProjectOptions,

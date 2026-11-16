@@ -1,6 +1,7 @@
 /**
  * Choices, defaults, flag parsing and npm's swallowed flags.
  */
+
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -9,6 +10,7 @@ import { main } from '../src/main.ts'
 import { OptionsError, resolveOptions, teamsNote } from '../src/options.ts'
 import { findSwallowedFlags, swallowedFlagsMessage } from '../src/swallowed-flags.ts'
 import { validateProjectName } from '../src/validate-name.ts'
+import { releaseTag } from '../src/version.ts'
 import { fakeEnvironment, tempFolder } from './helpers/fakes.ts'
 
 const NPM = 'npm/11.19.0 node/v24.21.0 win32 x64 workspaces/false'
@@ -244,8 +246,8 @@ describe('flags swallowed by npm (options before "--")', () => {
       { npm_config_user_agent: NPM, npm_config_db: 'sqlite', npm_config_git: 'false' },
       ['my-app', 'sqlite'],
     )
-    expect(message).toContain('npm create strutvane@latest my-app -- --db sqlite --no-git')
-    expect(message).toContain('npx create-strutvane@latest my-app --db sqlite --no-git')
+    expect(message).toContain(`npm create strutvane@${releaseTag()} my-app -- --db sqlite --no-git`)
+    expect(message).toContain(`npx create-strutvane@${releaseTag()} my-app --db sqlite --no-git`)
   })
 
   // Regression (class: npm's real traces, not guessed ones). Recorded with real npm 11.19.0,
@@ -265,7 +267,7 @@ describe('flags swallowed by npm (options before "--")', () => {
         { npm_config_user_agent: AGENT, npm_config_db: 'true' },
         ['my-app', 'sqlite'],
       )
-      expect(message).toContain('npm create strutvane@latest my-app -- --db sqlite')
+      expect(message).toContain(`npm create strutvane@${releaseTag()} my-app -- --db sqlite`)
     })
 
     it('a free-text flag is never rebuilt with the value "true"', () => {

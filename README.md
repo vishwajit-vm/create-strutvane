@@ -2,9 +2,9 @@
 
 # create-strutvane
 
-**Start a new Strutvane project in one command. Full-stack, API-only or UI-only, with typed config, `.env` + `.env.example`, local Docker services, tests and CI. It passes `lint`, `typecheck` and `test` from the first minute.**
+**Start a new Strutvane app in one command. It asks how you want it set up, then writes the project, generates secrets, picks free ports, starts the database (your own server or Docker), installs, migrates, seeds and makes the first commit.**
 
-[![Status: pre-release](https://img.shields.io/badge/status-pre--release-orange)](https://github.com/vishwajit-vm/strutvane/blob/main/docs/14-roadmap.md)
+[![Status: pre-release](https://img.shields.io/badge/status-pre--release-orange)](https://github.com/vishwajit-vm/strutvane/blob/main/docs/19-production-readiness.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Part of Strutvane](https://img.shields.io/badge/ecosystem-Strutvane-1f3a5f)](https://github.com/vishwajit-vm/strutvane)
@@ -12,157 +12,119 @@
 </div>
 
 > [!NOTE]
-> **Implemented, not released yet.** Version `0.1.0-next.0` is built and tested (Phase 1), but it is not on npm yet. The projects it generates depend on Strutvane packages that are still being built.
+> **v2 pre-release (`0.2.0-next.N`).** This is the v2 installer (Laravel's flow on npm, blueprint 18 §2.1). It releases in lockstep with the core train (framework, auth, ui and the designs, decision #128), and the apps it creates depend on `@strutvane/framework` `^0.2.0-next.0`. Pre-releases are published under the `next` dist-tag, so use `@next` until 1.0; `@latest` points at a placeholder. If a core-train package is not on npm yet, the install step stops with "a package version this app needs is not published yet" and `npm run setup` finishes later.
 
 ## Quick start
 
 ```bash
-npm create strutvane@next
+npm create strutvane@next my-app        # @latest from 1.0
+cd my-app
+npm run dev
 ```
 
-> Strutvane is pre-1.0, so releases are published under the npm `next` dist-tag (`@latest` is a name placeholder without a binary). From 1.0 the command is `npm create strutvane@latest`. With pnpm: `pnpm create strutvane@next`. `create-strutvane --help` always prints the command for its own release channel.
+It asks **how much you want to decide**: *Recommended* (a few starred questions, sensible defaults for the rest) or *Custom* (every question, grouped). A review screen lists every answer, defaults included, with *Create / Change an answer / Cancel*.
 
-It asks a few questions (what you're building, database, sign-in methods, extras) and writes the project. Every question also has a flag, so you can run it without any prompts:
+Every question has a flag, so CI (or `--yes`) never needs a prompt:
 
 ```bash
-npm create strutvane@next acme -- --preset full --db postgres --auth email,google --tenancy --yes
-cd acme
-pnpm install
-pnpm services:up     # local Postgres in Docker
-pnpm sv auth:migration   # sign-in tables (PostgreSQL with auth)
-pnpm sv migrate
-pnpm sv db:seed
-pnpm dev
+npm create strutvane@next acme -- --stack full --design vivid --sign-in magic-link --teams --db postgres --docker --yes
+npx create-strutvane@next acme --db sqlite --yes            # npx needs no "--"
 ```
 
-## Presets
+Every command the installer prints uses its own channel (`@next` for a pre-release). `npm create` needs `--` before flags. Without it, npm swallows some of them; the installer notices the traces npm leaves and prints the exact command to run instead. `--help` lists every flag.
 
-| Preset | What you get |
+## What it does
+
+1. **Writes the project** (all or nothing: a failure leaves no folder behind), in the Laravel-style layout: `app/http/controllers`, `app/models`, `app/policies`, `bootstrap/app.ts`, `routes/`, `config/`, `database/{migrations,seeders,factories}`, `resources/ui`, `tests/`.
+2. **Generates secrets** into `.env` (never `.env.example`): `APP_KEY` is the one root secret; database passwords in Docker mode.
+3. **Picks free ports** and moves away from any taken between the check and the start.
+4. **Starts the database**: your own MySQL, MariaDB or PostgreSQL server (XAMPP, WAMP, MAMP, Laragon, Postgres.app, a local install, a remote or cloud database), Docker (like Laravel Sail: the app, the database and Mailpit in containers), or SQLite. Docker is never required.
+5. **Installs** with npm, with no dependency install scripts.
+6. **Migrates and seeds**, creating the first admin with a one-time password shown once.
+7. **Makes the first git commit**, after checking that secrets and local data are ignored.
+8. Offers to run `npm run dev`.
+
+Progress is saved after every step. If one fails, it explains why in plain words and offers a fix; `npm run setup` continues from the first unfinished step. Exit codes: `0` ready, `1` nothing created, `2` created but setup unfinished, `130` cancelled.
+
+## What the app gets
+
+| File | Why |
 |---|---|
-| `full` (default) | REST API, database, auth and a generated React UI |
-| `api` | REST API, database and background work (no `web/`, no Playwright) |
-| `ui` | A UI for an **existing** Strutvane API: screens come from its manifest (no `app/`, no database). Building screens from any OpenAPI document is planned in `@strutvane/ui` |
+| `package.json` | `@strutvane/framework` plus only the packages your answers bring (never `@strutvane/core`, `contracts`, `cli`, `devkit` or `logs`: they were merged into the framework); the database driver pinned exactly; `engines.node >=24.3`; `devEngines` npm `>=11.19`; scripts that all go through `node strut` |
+| `.npmrc` | npm's supply-chain guards: `ignore-scripts`, `strict-allow-scripts` (only the `allowScripts` list may run), `min-release-age=1` (except `@strutvane/*`), `allow-git=none`, `engine-strict` |
+| `strut.js` | `node strut <command>`, the project CLI. It runs the framework's `strutvane` program, forwards into the app container in Docker mode, and handles `setup`, `services:*`, `db:shell` and the `npm`/`npx`/`node`/`shell` pass-throughs |
+| `strutvane.json` | Every answer (never a secret), committed. `npm run setup` sets up a fresh clone from it, and `node strut install:<name>` reads it |
+| `.strutvane/local/` | Machine-local state, git-ignored: setup progress, logs, a per-computer Docker override (`env.json`). The rest of `.strutvane/` is generated and committed |
+| `config/auth.ts` | The sign-in features you picked (`password`, `emailLink`, `registration`, `emailVerification`, `passwordReset`, `passwordConfirmation`, `twoFactor`, `passkeys`, `apiTokens`, `teams`, `impersonation`). Not env keys |
+| `config/cors.ts` | `CORS_ORIGINS` checked at load: empty, a wildcard, a non-origin or http in production each fail with a message that names the key |
+| `Dockerfile`, `.dockerignore` | Only with `--deploy docker` (ADR-0021): multi-stage, non-root, no secrets, `HEALTHCHECK` on `/up`, logs as JSON to stderr |
+| `.devcontainer/` | Only with `--dev-container` (ADR-0021) |
+| `docker/compose.yaml` | Docker mode only, git-ignored (ADR-0006): every port on 127.0.0.1 |
 
-## What gets generated
+`/up` is built in and answers `{"status":"ok"}`. The API is served under `/api`. Tests use Vitest.
 
-The layout follows the [developer experience spec, §3](https://github.com/vishwajit-vm/strutvane/blob/main/docs/05-developer-experience.md). Only what your choices need is created.
+## Packages and the catalogue
 
-```
-acme/
-├─ app/                 models, policies, services, routes, jobs, providers (README in every folder)
-├─ config/              typed settings that read the validated environment
-├─ database/            migrations (generated), seeders/database.seeder.ts, factories
-├─ web/                 Vite + React; app.tsx renders <StrutvaneApp> (full, ui)
-├─ tests/               unit (a real env test), feature, e2e        (e2e: full, ui)
-├─ storage/             logs and uploads                            (git-ignored)
-├─ docker/compose.yaml  local services only                         (git-ignored by default)
-├─ .strutvane/          generated state (git-ignored); upgrade state lock.json, base/, templates/ (committed)
-├─ env.ts, env.schema.ts   every environment variable, validated with Zod at startup
-├─ .env                 your local values and generated secrets     (git-ignored)
-├─ .env.example         every key, documented, no secrets           (committed)
-├─ strutvane.config.ts  which Strutvane packages are active
-├─ package.json  tsconfig.json  biome.json  vitest.config.ts  playwright.config.ts
-├─ pnpm-workspace.yaml  pnpm settings                               (pnpm only)
-├─ .gitignore  .gitattributes  .editorconfig  .github/workflows/ci.yml
-└─ README.md  CLAUDE.md
-```
+Optional packages (question 22, plus the questions that bring a package, such as Redis, S3 storage, social login or SSO) come from the **package catalogue** (blueprint §3.3). The installer reads the hub's `catalogue.json` (format 2) through its own checker, which treats the file as untrusted, and offers only packages that are **published and compatible** with the framework being installed. A question whose packages are not released yet is not asked, and its flag is refused with the release it is planned for.
 
-**Secrets.** `APP_KEY`, `AUTH_SECRET`, `DB_PASSWORD` and `SEED_ADMIN_PASSWORD` are generated (32 random bytes each) straight into `.env`. Only the first admin password is printed, once, and only in an interactive terminal session: with `--yes`, piped output or on a CI server (`CI` / `TF_BUILD` set) it is not printed, and the CLI points you to `SEED_ADMIN_PASSWORD` in `.env` instead. `.env.example` never contains a secret value.
+`--preview-catalogue` is a developer flag that offers the unreleased packages too, for trying them out.
 
-**Secure defaults.** `.env.example` (committed, the starting point for other environments) has `APP_DEBUG=false` and `API_DOCS=false`; your local `.env` turns both on. The generated `env.schema.ts` refuses to boot with `APP_DEBUG=true` unless `APP_ENV=local`, with a `*` in `CORS_ORIGINS` (the API allows credentials), and with non-`https://` CORS origins in production. Public sign-up is off (`AUTH_ALLOW_REGISTRATION=false`). `config/auth.ts` (typed by `defineAuthConfig` from `@strutvane/auth`) gets the default roles from the [auth spec §2.7 and §4.4](https://github.com/vishwajit-vm/strutvane/blob/main/docs/07-package-auth.md): `admin`, `member` (updates and deletes only its own records: `own: true`, matched on `ownerId`), `viewer`, and with tenancy `owner` for a tenant's creator (`scope: 'tenant'`). Admin's user-management grants are `scope: 'global'` (platform administrators only, never a tenant's own admin), and identity, authorization, tenancy and audit records are never matched by wildcards. `@strutvane/auth` enforces the role map together with `app/policies/*.policy.ts` (deny-by-default; a policy `deny` always wins). Reverse proxies are not trusted unless you set `TRUST_PROXY` (only behind a proxy you control), and `config/auth.ts` lists `trustedOrigins` and an empty `trustedProxies`.
+A snapshot of the catalogue ships with the installer (`src/data/catalogue.json`, from the hub's spike 21 seed). The hub-built `catalogue.json` replaces it in a later release.
 
-**`pnpm sv`** runs the project's own CLI (`strutvane-cli` from `@strutvane/cli` in devDependencies), so `pnpm sv help` lists the project's commands, including those of installed packages. A global `strutvane` launcher runs the same CLI for every command except `help`.
+## Migrating from v1
 
-**pnpm projects** get a `pnpm-workspace.yaml` (verified with pnpm 12.18.0). pnpm 12 stops `pnpm install` with `ERR_PNPM_IGNORED_BUILDS` when a dependency has a build script nobody approved, so the file approves exactly one: `allowBuilds: { esbuild: true }` (esbuild, used by Vite and the migration tooling, sets up its platform binary in a build step). It also lists `@strutvane/*` and `strutvane` in `minimumReleaseAgeExclude`: Strutvane pre-releases are staged and approved with 2FA ([ADR-0018](https://github.com/vishwajit-vm/strutvane/blob/main/docs/adr/0018-staged-npm-publishing.md)), and every third-party package keeps pnpm's "too new" protection. npm, Yarn and Bun need no equivalent: npm 11 and Yarn run build scripts, npm 12 only warns and esbuild still works through its platform package, and Bun trusts esbuild by default. The "Next steps" note and the generated README show the Corepack fallback, `corepack pnpm@12.18.0 <command>`, for machines without pnpm on the PATH.
+v1 (`0.1.0-next.0`, pnpm, presets) and v2 have nothing in common but the name: v2 is a new installer for the v2 app layout. Existing v1 projects keep working with the v1 packages; there is no automatic upgrade.
 
-**The UI** is `<StrutvaneApp>` from `@strutvane/ui`: sign-in, a workspace switcher, a menu of every resource the user may see, and list, create, detail and edit pages, all from the API manifest. `web/router.tsx` adds your own screens (`RouteDefinition[]`), `web/theme/tokens.css` restyles it through `--sv-*` variables, and `overrides` in `web/app.tsx` replaces single widgets, cells or messages. Without auth the shell gets `auth={false}`; the ui preset sends cookies to the other origin (`credentials="include"`). This needs the `@strutvane/ui` release after 0.1.0-next.0 (the pin in `src/versions.ts` is bumped before release).
+| v1 | v2 |
+|---|---|
+| `npm create strutvane@next`, pnpm by default | `npm create strutvane@next` (`@latest` from 1.0), npm only |
+| `--preset full\|api\|ui` | `--stack full\|api` (a UI-only preset is gone: the UI ships with the full app) |
+| `--auth email,google` | `--sign-in email\|magic-link\|none`, `--security`, `--social` |
+| `--tenancy` | `--teams` (`--tenant switcher\|subdomain`) |
+| `--docker=commit` | `--docker` (local stack, git-ignored), `--deploy docker` and `--dev-container` (committed, ADR-0021) |
+| `--dry-run` | Gone: the review screen shows every answer before anything is written |
+| `sv <command>` (`@strutvane/cli`) | `node strut <command>` (the framework's `strutvane` program) |
+| Dependencies on `@strutvane/core`, `contracts`, `cli`, `devkit`, `logs` | Only `@strutvane/framework` and the chosen packages |
+| `env.schema.ts` (Zod) | `config/*.ts`, validated by the framework at boot; `config/cors.ts` checks `CORS_ORIGINS` |
+| `.strutvane/` git-ignored except `lock.json`, `base/`, `templates/` | `.strutvane/` committed except `.strutvane/local/` |
+| `pnpm-workspace.yaml` guards | `.npmrc` guards (npm `>=11.19`) |
 
-**Users** are not an app model: accounts, sessions, roles and memberships belong to `@strutvane/auth`, and a request knows its user as the actor. `app/models/README.md` shows a profile model keyed by `userId` for your own user fields. On PostgreSQL with auth (and the default `AUTH_SESSION_DRIVER=database`), auth keeps them in the app's database through Better Auth: the project depends on `better-auth`, and `sv auth:migration` writes the migration for those tables before the first `sv migrate` (Next steps, the README and `database/migrations/README.md` say so). Other databases keep sign-in in memory for now.
-
-**Docker is local-only** ([ADR-0006](https://github.com/vishwajit-vm/strutvane/blob/main/docs/adr/0006-docker-local-only.md)). `docker/compose.yaml` runs Postgres or MySQL, Valkey and Mailpit as your choices need. It reads credentials from `.env` and binds every port to `127.0.0.1`. It is git-ignored unless you pass `--docker=commit`.
-
-## Options
-
-| Flag | Values | Default |
-|---|---|---|
-| `[folder]` | where to create the project; its name becomes the package name | asked |
-| `--name <name>` | package name, if it should differ from the folder | folder name |
-| `--preset <name>` | `full`, `api`, `ui` | `full` |
-| `--db`, `--database <name>` | `postgres`, `mysql`, `sqlite`, `azure-postgres`, `azure-mysql` | `postgres` |
-| `--auth <list>` / `--no-auth` | comma-separated: `email`, `magic-link`, `google`, `microsoft`, `github`, or `none` | `email` |
-| `--tenancy` / `--no-tenancy` | multi-tenancy, shared database (needs auth) | off |
-| `--extras <list>` / `--no-extras` | `queue`, `cache`, `mail`, `audit` (needs auth), `otel`, `logs`, or `none` | `logs` |
-| `--docker[=mode]` / `--no-docker` | `local` (git-ignored), `commit`, `off` | `local` when there is something to run |
-| `--pm <name>` | `pnpm`, `npm`, `yarn`, `bun` | the one you ran it with |
-| `--no-git` | skip `git init` and the first commit | git on |
-| `--install` | install dependencies afterwards | off |
-| `-y`, `--yes` | accept defaults for everything not given; never prompt | |
-| `--dry-run` | print the file tree and a full diff; write nothing | |
-
-When stdin is not a terminal (CI, pipes), nothing is asked; it behaves like `--yes`.
-
-## Safety guarantees
-
-- **Never overwrites.** The target folder must be missing or empty, and this is checked before any question is asked.
-- **All or nothing.** Files are written through [`@strutvane/devkit`](https://github.com/vishwajit-vm/strutvane-devkit)'s staged, transactional file system. If writing fails halfway, every file is rolled back and the folder is removed (or emptied again, if it existed).
-- **Cancel-safe.** Ctrl+C at any question exits with code `130` and nothing is created.
-- **Every problem at once.** Invalid flags are reported together, before any question (for example `--preset ui --db mysql` explains that a UI-only project has no database).
-- **Names that work everywhere.** Project names must be valid npm names and safe folder names on Windows (`con`, `nul` and friends are refused).
-- **Post steps never destroy work.** A failed `git commit` (no git identity) or `--install` becomes a warning that tells you which command to run.
+To move a v1 project, create a v2 app with the same answers and move your models, policies and routes across by hand.
 
 ## Programmatic API
 
 ```ts
-import { createProject, resolveOptions } from 'create-strutvane'
+import { EXIT, main } from 'create-strutvane'
 
-const { options, warnings } = resolveOptions(
-  { name: 'acme', preset: 'api', database: 'sqlite' },
-  { cwd: process.cwd() },
-)
-const result = await createProject(options, { dryRun: true })
-console.log(result.tree)
+const code = await main(environment) // see InstallerEnvironment: prompter, programs, folder, clock
+if (code === EXIT.incomplete) console.log('run npm run setup')
 ```
-
-`renderProject(options)` returns every file without touching the disk; `main(argv, deps)` is the whole CLI with an injectable UI, prompter and command runner.
 
 ## Development
 
 ```bash
-corepack pnpm@12.18.0 install
-corepack pnpm@12.18.0 run ci     # lint → typecheck → tests + coverage → build
+npm ci
+npm run ci          # lint, typecheck, tests with coverage (90/90/85/90), build
+node src/cli.ts my-app --db sqlite --yes     # try it from source (Node strips the types)
 ```
 
-The end-to-end tests generate real projects for seven option combinations and check each one with the real tools:
-
-- golden files (`test/__golden__/*.txt`; update with `vitest run -u` and review the diff)
-- `tsc` against the real `@strutvane/core` and Zod
-- Biome with the project's own config
-- the project's own Vitest suite
-- `git check-ignore` on the generated `.gitignore`
-- in the local workspace layout, `config/auth.ts` against the real `@strutvane/auth` types and `web/` against the real `@strutvane/ui` typings (the published 0.1.0-next.0 API)
-
-`test/bin.test.ts` builds the CLI with the repo's own tsdown config into a temporary folder and checks that every `bin` target exists, starts with a `#!` shebang and runs, so the check does not depend on `dist/` or on the order of the `ci` steps.
-
-Packages that aren't published yet (framework, auth, logs) are replaced by type stubs that cover only the surface the templates use. Dependency versions for generated projects live in [`src/versions.ts`](src/versions.ts).
+The end-to-end suites run real npm, git and SQLite, and, when Docker is running, real MySQL 8.4, MariaDB 11 and PostgreSQL 18 containers with unique names that are removed afterwards. Because the Strutvane packages are not on npm yet, they use local stand-ins: `STRUT_LOCAL_PACKAGES=<folder>` makes the installer copy package folders (`strutvane-framework`, …) into the app instead of using the registry. It is also how the ecosystem's umbrella workspace tries an unreleased framework.
 
 ## Works alone, better together
 
 | Package | Role |
 |---------|------|
-| [`@strutvane/framework`](https://github.com/vishwajit-vm/strutvane-framework) | Backend & database core |
-| [`@strutvane/auth`](https://github.com/vishwajit-vm/strutvane-auth) | Authentication, authorization, tenancy, audit |
-| [`@strutvane/ui`](https://github.com/vishwajit-vm/strutvane-ui) | Metadata-driven frontend |
-| [`@strutvane/core`](https://github.com/vishwajit-vm/strutvane-core) | Kernel: container, providers, config, context |
-| [`@strutvane/contracts`](https://github.com/vishwajit-vm/strutvane-contracts) | Shared types and wire protocols |
-| [`strutvane` / `@strutvane/cli`](https://github.com/vishwajit-vm/strutvane-cli) | Unified CLI |
-| [`@strutvane/devkit`](https://github.com/vishwajit-vm/strutvane-devkit) | SDK for installers, generators and plugins |
-| [`@strutvane/logs`](https://github.com/vishwajit-vm/strutvane-logs) | Zero-config logging + built-in log viewer (default) |
-| [`create-strutvane`](https://github.com/vishwajit-vm/create-strutvane) | Project starter |
+| [`@strutvane/framework`](https://github.com/vishwajit-vm/strutvane-framework) | The framework: MVC, ORM, migrations, CLI (`strutvane`), security, logging |
+| [`@strutvane/auth`](https://github.com/vishwajit-vm/strutvane-auth) | Sign-in, tokens, 2FA, passkeys, teams |
+| [`@strutvane/ui`](https://github.com/vishwajit-vm/strutvane-ui) | React admin UI built from your models |
+| `@strutvane/design-crisp`, `@strutvane/design-vivid` | The looks of the UI |
+| [`create-strutvane`](https://github.com/vishwajit-vm/create-strutvane) | This installer |
 
 ## Documentation
 
-- **Package specification:** [05-developer-experience.md](https://github.com/vishwajit-vm/strutvane/blob/main/docs/05-developer-experience.md)
-- **Ecosystem blueprint:** [strutvane/docs](https://github.com/vishwajit-vm/strutvane/tree/main/docs), starting with the [executive summary](https://github.com/vishwajit-vm/strutvane/blob/main/docs/00-executive-summary.md)
+- **The flow:** [18 v2 blueprint §2.1–§2.2](https://github.com/vishwajit-vm/strutvane/blob/main/docs/18-v2-blueprint.md)
+- **Release gates:** [19 production readiness](https://github.com/vishwajit-vm/strutvane/blob/main/docs/19-production-readiness.md)
+- **Decisions:** [executive summary](https://github.com/vishwajit-vm/strutvane/blob/main/docs/00-executive-summary.md), [ADRs](https://github.com/vishwajit-vm/strutvane/tree/main/docs/adr)
 
 ## Contributing
 

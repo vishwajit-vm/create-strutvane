@@ -19,6 +19,7 @@ import { QUESTIONS, type Question } from './question-registry.ts'
 import { STATE_FILE, type StepId } from './setup-state.ts'
 import { readEnvFile } from './steps/env-io.ts'
 import type { ShowOnce } from './steps/types.ts'
+import { releaseTag } from './version.ts'
 
 /**
  * The same project as one non-interactive command, so it can be repeated (or pasted into CI).
@@ -35,7 +36,7 @@ export function equivalentCommand(options: ProjectOptions): string {
     (q) => q.id !== 'mode' && q.when(answers) && (q.visible(answers) || !isDefault(q, answers)),
   ).flatMap((q) => q.flagWords(answers))
   const preview = options.previewCatalogue ? ['--preview-catalogue'] : []
-  return `npm create strutvane@latest ${options.name} -- ${[...words, ...preview, '--yes'].join(' ')}`
+  return `npm create strutvane@${releaseTag()} ${options.name} -- ${[...words, ...preview, '--yes'].join(' ')}`
 }
 
 /**

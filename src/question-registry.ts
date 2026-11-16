@@ -158,6 +158,11 @@ export interface Question {
   availabilityProblem(answers: Answers): string | undefined
   /** The answers with this question's effective answer moved off an unavailable package. */
   settle(answers: Answers): Answers
+  /**
+   * The flag forms that need a package that is not released yet (`--cache-store redis`), for
+   * `--help`. Omitted by questions that bring no package.
+   */
+  unreleased?(answers: Answers): readonly string[]
 }
 
 // ── Building blocks shared by the factories ──────────────────────────────────────────────────
@@ -279,7 +284,8 @@ function select<K extends AnswerKey>(id: K, spec: SelectSpec<Value<K> & string>)
       return {
         ...base(id, spec, {
           type: 'string',
-          usage: `--${spec.flag} ${choices()
+          // The released choices; the others are listed apart in --help (unreleased()).
+          usage: `--${spec.flag} ${available({})
             .map((c) => c.value)
             .join('|')}`,
           defaultLabel: spec.default({}),
@@ -323,6 +329,10 @@ function select<K extends AnswerKey>(id: K, spec: SelectSpec<Value<K> & string>)
       const first = available(answers)[0]
       return first === undefined ? answers : put(answers, id, first.value)
     },
+    unreleased: (answers) =>
+      choices()
+        .filter((choice) => !allAvailable(choice.packages, answers))
+        .map((choice) => `--${spec.flag} ${choice.value}`),
   }
 }
 
@@ -401,6 +411,7 @@ function confirm<K extends BoolKey>(id: K, spec: ConfirmSpec): Question {
       current(answers) === true ? unavailableReason(spec.packages ?? [], answers) : undefined,
     settle: (answers) =>
       effective(answers) && !yesAvailable(answers) ? put(answers, id, false) : answers,
+    unreleased: (answers) => (yesAvailable(answers) ? [] : [`--${spec.flag}`]),
   }
 }
 
@@ -497,6 +508,10 @@ function multi<K extends AnswerKey>(id: K, spec: MultiSpec<Item<K>>): Question {
       const kept = effective(answers).filter((value) => allAvailable(packagesOf(value), answers))
       return kept.length === effective(answers).length ? answers : put(answers, id, kept)
     },
+    unreleased: (answers) =>
+      spec.choices
+        .filter((choice) => !allAvailable(choice.packages, answers))
+        .map((choice) => `--${spec.flag} ${choice.value}`),
   }
 }
 
@@ -762,6 +777,7 @@ const featuresQuestion: Question = {
   ],
   packages: (answers) => pickedEntries(answers).map((e) => e.package),
   tidy: (answers) => answers,
+  unreleased: (answers) => (offeredFor(answers).length === 0 ? ['--features <id>'] : []),
   // A listed package that is not released is refused at the flags already (#109); unknown ids
   // are left to resolveOptions, which names them.
   availabilityProblem: (answers) => {
@@ -1561,7 +1577,7 @@ export const QUESTIONS: readonly Question[] = [
     group: 'Quality',
     title: 'Tests',
     flag: 'testing',
-    help: 'vitest, vitest-playwright or none',
+    help: 'Vitest, or none (browser tests arrive with @strutvane/browser-testing)',
     message: 'Which tests do you want?',
     choices: [
       { value: 'vitest', label: 'Vitest (unit + feature tests)', short: 'Vitest' },
