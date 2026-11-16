@@ -20,7 +20,7 @@ import { envValue } from './env-io.ts'
 import { failed, type Step, type StepContext, type StepOutcome } from './types.ts'
 
 /** What kind of npm failure the output shows. */
-export type InstallProblem = 'network' | 'locked' | 'registry' | 'npm-version' | 'other'
+export type InstallProblem = 'network' | 'locked' | 'registry' | 'npm-version' | 'missing' | 'other'
 
 /**
  * Classify an npm failure from its output.
@@ -32,6 +32,7 @@ export function classifyInstallFailure(output: string): InstallProblem {
   if (/\b(ETIMEDOUT|ECONNRESET|EAI_AGAIN|ENOTFOUND|ECONNREFUSED)\b/.test(output)) return 'network'
   if (/\b(EPERM|EBUSY)\b/.test(output)) return 'locked'
   if (/\bEBADDEVENGINES\b/.test(output)) return 'npm-version'
+  if (/\b(ETARGET|E404)\b/.test(output)) return 'missing'
   if (/\b(E401|E403|SELF_SIGNED_CERT_IN_CHAIN|UNABLE_TO_GET_ISSUER_CERT_LOCALLY)\b/.test(output))
     return 'registry'
   return 'other'
@@ -46,6 +47,8 @@ const HINTS: Readonly<Record<InstallProblem, string>> = {
     'The registry refused the request. Check `npm config get registry` and your npm login or proxy certificate.',
   'npm-version':
     'This app needs npm 11.19 or newer (its supply-chain guards need it). Update npm: npm install --global npm@11',
+  missing:
+    'npm could not find a package version this app needs: it is not published yet, or your registry does not have it (npm config get registry).',
   other: 'npm install failed.',
 }
 

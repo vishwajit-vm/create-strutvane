@@ -1,7 +1,8 @@
 /**
  * Real Docker smoke tests (skipped when Docker is not available): the installer runs in Docker
- * mode for real, so containers start, `npm ci`, migrations and seeding run INSIDE the app
- * container, and `node strut` on the host forwards into it.
+ * mode for real, so containers start, `npm install`, migrations and seeding run INSIDE the app
+ * container, and `node strut` on the host forwards into it. The Strutvane packages are local
+ * stand-ins (`STRUT_LOCAL_PACKAGES`), copied into the project, so the container sees them.
  *
  * Isolation: every run uses a unique Compose project name (`s13-<kind>-<random>`), and cleanup
  * removes exactly that project's containers and volumes. Other stacks on this machine are never
@@ -18,6 +19,9 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 import { parseEnv } from '../src/env-file.ts'
 import { tempFolder } from './helpers/fakes.ts'
+import { localPackages } from './helpers/local-packages.ts'
+
+const PACKAGES = localPackages()
 
 const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url))
 const dockerWorks =
@@ -60,7 +64,7 @@ function cleanEnvironment(): NodeJS.ProcessEnv {
   for (const [key, value] of Object.entries(process.env)) {
     if (!/^(npm_|GIT_|CI$)/i.test(key)) env[key] = value
   }
-  return env
+  return { ...env, STRUT_LOCAL_PACKAGES: PACKAGES }
 }
 
 /** Create a project in Docker mode and register it for cleanup. */
@@ -74,7 +78,7 @@ function createProject(kind: string, flags: string[]) {
   created.push({ project, directory })
   const result = spawnSync(
     process.execPath,
-    [CLI, project, '--yes', '--docker', '--no-git', ...flags],
+    [CLI, project, '--yes', '--docker', '--no-git', '--testing', 'none', ...flags],
     {
       cwd: root,
       env: cleanEnvironment(),
@@ -154,7 +158,7 @@ async function eventually<T>(check: () => Promise<T>, timeoutMs = 30_000): Promi
 }
 
 describe.skipIf(!dockerWorks)('real Docker mode (everything in containers)', () => {
-  it('SQLite: app + Mailpit start, npm ci / migrate / seed run in the container, node strut forwards, npm run dev serves', async () => {
+  it('SQLite: app + Mailpit start, npm install / migrate / seed run in the container, node strut forwards, npm run dev serves', async () => {
     const result = createProject('sqlite', ['--db', 'sqlite'])
     expect(result.code, result.output).toBe(0)
     expect(result.output).toMatch(/Containers running and healthy \(app, mailpit\)/)
@@ -166,7 +170,7 @@ describe.skipIf(!dockerWorks)('real Docker mode (everything in containers)', () 
     expect(existsSync(join(result.directory, 'database', 'database.sqlite'))).toBe(true)
 
     // node strut on the host runs inside the container.
-    const help = spawnSync(process.execPath, ['strut.js', 'help'], {
+    const help = spawnSync(process.execPath, ['strut.js', 'list'], {
       cwd: result.directory,
       encoding: 'utf8',
       timeout: 60_000,
@@ -184,6 +188,7 @@ describe.skipIf(!dockerWorks)('real Docker mode (everything in containers)', () 
     const home = await eventually(() => get(port, '/'))
     expect(home.status).toBe(200)
     expect(home.body).toContain(result.project)
+    expect(await get(port, '/up')).toEqual({ status: 200, body: '{"status":"ok"}' })
     expect((await get(port, '/', 'evil.example')).status).toBe(403)
     dev.kill()
 
@@ -299,6 +304,8 @@ describe.skipIf(!dockerWorks)('the generated production image (ADR-0021)', () =>
         'docker',
         '--no-git',
         '--no-dev',
+        '--testing',
+        'none',
       ],
       {
         cwd: root,
@@ -309,6 +316,28 @@ describe.skipIf(!dockerWorks)('the generated production image (ADR-0021)', () =>
     )
     expect(install.status, `${install.stdout}${install.stderr}`).toBe(0)
     const directory = join(root, name)
+    // Test only: the image must also see the local package stand-ins (a real app installs from
+    // npm). The generated files keep .strutvane/local/ out of the build context (#111).
+    const dockerfile = readFileSync(join(directory, 'Dockerfile'), 'utf8')
+    expect(dockerfile).toMatch(/^ENV LOG_CHANNEL=stderr$/m)
+    writeFileSync(
+      join(directory, 'Dockerfile'),
+      dockerfile
+        .replaceAll(
+          'COPY package.json package-lock.json .npmrc ./\n',
+          'COPY package.json package-lock.json .npmrc ./\nCOPY .strutvane/local/packages ./.strutvane/local/packages\n',
+        )
+        .replace(
+          'COPY --from=deps /app/node_modules ./node_modules\n',
+          'COPY --from=deps /app/node_modules ./node_modules\nCOPY --from=deps /app/.strutvane/local/packages ./.strutvane/local/packages\n',
+        ),
+    )
+    const ignore = readFileSync(join(directory, '.dockerignore'), 'utf8')
+    expect(ignore).toContain('.strutvane/local/\n')
+    writeFileSync(
+      join(directory, '.dockerignore'),
+      ignore.replace('.strutvane/local/\n', '.strutvane/local/*\n!.strutvane/local/packages/\n'),
+    )
     const secrets = parseEnv(readFileSync(join(directory, '.env'), 'utf8'))
     const image = `${name}:audit`
     images.push(image)
@@ -328,7 +357,7 @@ describe.skipIf(!dockerWorks)('the generated production image (ADR-0021)', () =>
       '-c',
       'id -u; find / -xdev -name ".env*" 2>/dev/null; grep -rl -e "$0" -e "$1" /app 2>/dev/null; echo end',
       secrets.get('APP_KEY') ?? 'x',
-      secrets.get('AUTH_SECRET') ?? 'x',
+      secrets.get('APP_KEY') ?? 'x',
     ])
     expect(scan.split('\n')).toEqual(['1000', 'end'])
     expect(
@@ -367,7 +396,11 @@ describe.skipIf(!dockerWorks)('the generated production image (ADR-0021)', () =>
       await new Promise((resolve) => setTimeout(resolve, 1000))
     }
     expect(health, dockerOk(['logs', container])).toBe('healthy')
-    expect(await get(port, '/up')).toEqual({ status: 200, body: 'up' })
+    expect(await get(port, '/up')).toEqual({ status: 200, body: '{"status":"ok"}' })
+    // Logs go to stderr as JSON (ADR-0022, #7): the platform collects them.
+    expect(dockerOk(['inspect', '--format', '{{.Config.Env}}', container])).toMatch(
+      /LOG_CHANNEL=stderr.*LOG_FORMAT=json/,
+    )
 
     const started = Date.now()
     dockerOk(['stop', '-t', '10', container])

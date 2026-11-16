@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { parseEnv } from '../src/env-file.ts'
 import { tempFolder } from './helpers/fakes.ts'
+import { localPackages } from './helpers/local-packages.ts'
 
 const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url))
 const dockerWorks =
@@ -24,6 +25,8 @@ const dockerWorks =
   }).status === 0
 const suffix = `${process.pid.toString(36)}-${Math.random().toString(36).slice(2, 6)}`
 const containers: string[] = []
+// The Strutvane packages are local stand-ins (not on npm yet); the drivers come from the registry.
+const PACKAGES = localPackages()
 
 const ROOT_PASSWORD = 'Root-Pass-4711'
 const PG_PASSWORD = 'Pg-Super-4711'
@@ -81,7 +84,7 @@ function cleanEnvironment(extra: Record<string, string>): NodeJS.ProcessEnv {
   for (const [key, value] of Object.entries(process.env)) {
     if (!/^(npm_|GIT_|CI$|STRUT_)/i.test(key)) env[key] = value
   }
-  return { ...env, ...extra }
+  return { ...env, STRUT_LOCAL_PACKAGES: PACKAGES, ...extra }
 }
 
 /** Run the real installer without Docker against a server; returns code, output and the .env. */
@@ -212,7 +215,7 @@ describe.runIf(dockerWorks)(
         'own_mysql',
         'own_mysql_test',
       ])
-      expect(mysqlSql('SELECT COUNT(*) FROM own_mysql.strut_migrations')).toBe('1')
+      expect(mysqlSql('SELECT COUNT(*) FROM own_mysql.migrations')).toBe('1')
       expect(run.output).not.toContain(ROOT_PASSWORD)
     }, 600_000)
 
@@ -236,9 +239,9 @@ describe.runIf(dockerWorks)(
         /MySQL refused the login for user "root": wrong user name or password/,
       )
       expect(run.output).not.toContain('Wrong-Pass-0815')
-      expect(readFileSync(join(run.directory, '.strutvane', 'setup.json'), 'utf8')).not.toContain(
-        'Wrong-Pass-0815',
-      )
+      expect(
+        readFileSync(join(run.directory, '.strutvane', 'local', 'setup.json'), 'utf8'),
+      ).not.toContain('Wrong-Pass-0815')
     }, 600_000)
 
     it('MySQL: no right to create databases: prints the exact SQL, exit 2; after an admin runs it, npm run setup finishes', () => {
@@ -268,7 +271,7 @@ describe.runIf(dockerWorks)(
       for (const line of sql) mysqlSql(line)
       const resumed = run.resume()
       expect(resumed.code, resumed.output).toBe(0)
-      expect(mysqlSql('SELECT COUNT(*) FROM own_limited.strut_migrations')).toBe('1')
+      expect(mysqlSql('SELECT COUNT(*) FROM own_limited.migrations')).toBe('1')
     }, 600_000)
 
     it('MariaDB: detected from the server version (DB_CONNECTION=mariadb); an empty local root password works, with a warning', () => {
@@ -342,7 +345,7 @@ describe.runIf(dockerWorks)(
       expect(
         asApp('SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user'),
       ).toBe('f|f')
-      expect(asApp("SELECT tableowner FROM pg_tables WHERE tablename = 'strut_migrations'")).toBe(
+      expect(asApp("SELECT tableowner FROM pg_tables WHERE tablename = 'migrations'")).toBe(
         'own_pg_owner',
       )
       expect(asApp("SELECT datname FROM pg_database WHERE datname = 'own_pg_test'")).toBe(
