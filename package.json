@@ -1,6 +1,6 @@
 {
   "name": "create-strutvane",
-  "version": "0.1.0-next.0",
+  "version": "0.2.0-next.0",
   "description": "Start a new Strutvane app in one command: npm create strutvane@latest my-app. Asks how you want it set up, then writes the project, generates secrets, picks ports, starts the database (your own server or Docker), installs, migrates, seeds and makes the first commit.",
   "keywords": [
     "strutvane",

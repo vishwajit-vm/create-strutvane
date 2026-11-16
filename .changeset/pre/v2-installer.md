@@ -2,7 +2,7 @@
 "create-strutvane": minor
 ---
 
-create-strutvane v2: the real `npm create strutvane` installer (`@next` until 1.0) (hub blueprint 18 §2.1), ported from the audited spike 13.
+create-strutvane v2: the real `npm create strutvane` installer (hub blueprint 18 §2.1; `@next` until 1.0), ported from the audited spike 13.
 
 - **Laravel's flow on npm:** Recommended or Custom questions (every one has a flag), a review screen, then files, secrets, ports, database, install, migrate and seed, git, and `npm run dev`. Progress is saved after every step; `npm run setup` continues from the first unfinished one, and also sets up a fresh clone from the committed `strutvane.json`. Exit codes: 0 ready, 1 nothing created, 2 setup unfinished, 130 cancelled.
 - **Any database, with or without Docker:** your own MySQL, MariaDB or PostgreSQL (XAMPP, WAMP, MAMP, Laragon, Postgres.app, remote), Docker mode like Laravel Sail, or SQLite. Plain-language connection errors, database creation, and PostgreSQL owner and app roles so row-level security applies.
