@@ -1,55 +1,16 @@
 /**
- * `create-strutvane`: start a new Strutvane project.
+ * `create-strutvane`: start a new Strutvane app.
  *
- * Most people run the binary: `npm create strutvane@next` while Strutvane is pre-1.0 (pre-releases
- * are published under the `next` dist-tag; `latest` has no binary yet), `npm create strutvane@latest`
- * from 1.0. This entry point exposes the same engine for tools and tests: validate choices, render
- * the files, write them transactionally.
+ * Most people run the binary: `npm create strutvane@latest my-app`. This entry exposes the same
+ * installer for tools that drive it programmatically (with their own prompter, programs and
+ * folder), plus the exit codes and the version.
  *
- * ```ts
- * import { createProject, resolveOptions } from 'create-strutvane'
+ * @example
+ * import { EXIT, main } from 'create-strutvane'
+ * const code = await main(environment) // EXIT.ok when the app is ready
  *
- * const { options } = resolveOptions({ name: 'acme', preset: 'api', database: 'sqlite' }, { cwd: process.cwd() })
- * await createProject(options)
- * ```
- *
- * @packageDocumentation
+ * @module
  */
-export { ArgsError, helpText, type ParsedArgs, parseArgs } from './args.ts'
-export { buildEnvSpec, type EnvKind, type EnvSection, type EnvSpecVar } from './env-spec.ts'
-export {
-  type CreateProjectResult,
-  type CreateProjectSettings,
-  checkTarget,
-  createProject,
-  SECRET_PLACEHOLDER,
-  TargetNotEmptyError,
-} from './generate.ts'
-export { DEFAULT_NAME, isCi, type MainDeps, main, type Ui } from './main.ts'
-export { nextSteps } from './next-steps.ts'
-export {
-  AUTH_METHODS,
-  type AuthMethod,
-  DATABASES,
-  type Database,
-  DEFAULTS,
-  DOCKER_MODES,
-  type DockerMode,
-  EXTRAS,
-  type Extra,
-  OptionsError,
-  PACKAGE_MANAGERS,
-  type PackageManager,
-  PRESETS,
-  type Preset,
-  type ProjectInput,
-  type ProjectOptions,
-  type RawProjectInput,
-  resolveOptions,
-} from './options.ts'
-export { type CommandRunner, type GitOutcome, type PostResult, runPostSteps } from './post.ts'
-export { CANCEL, CancelledError, type Choice, type Prompter } from './prompts.ts'
-export { createCommand, releaseTag } from './release-channel.ts'
-export { type RenderedProject, renderProject, renderTree } from './render.ts'
-export { validateProjectName } from './validate-name.ts'
-export { STRUTVANE_VERSION } from './versions.ts'
+export { EXIT, type ExitCode } from './exit-codes.ts'
+export { checkNodeVersion, type InstallerEnvironment, MINIMUM_NODE, main } from './main.ts'
+export { VERSION } from './version.ts'

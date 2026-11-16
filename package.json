@@ -1,14 +1,15 @@
 {
   "name": "create-strutvane",
   "version": "0.1.0-next.0",
-  "description": "Start a new Strutvane project in one command: npm create strutvane@next (pre-1.0; @latest from 1.0). Full-stack, API-only or UI-only presets with configs, .env/.env.example, local Docker services, tests and CI ready.",
+  "description": "Start a new Strutvane app in one command: npm create strutvane@latest my-app. Asks how you want it set up, then writes the project, generates secrets, picks ports, starts the database (your own server or Docker), installs, migrates, seeds and makes the first commit.",
   "keywords": [
     "strutvane",
     "create",
     "starter",
     "scaffolding",
+    "installer",
     "typescript",
-    "fullstack",
+    "mvc",
     "b2b"
   ],
   "homepage": "https://github.com/vishwajit-vm/create-strutvane#readme",
@@ -35,13 +36,20 @@
   },
   "files": [
     "dist",
+    "templates",
     "README.md",
     "LICENSE"
   ],
   "engines": {
-    "node": ">=24"
+    "node": ">=24.3"
   },
-  "packageManager": "pnpm@12.18.0",
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": ">=11.19.0",
+      "onFail": "error"
+    }
+  },
   "publishConfig": {
     "access": "public",
     "provenance": true
@@ -56,22 +64,23 @@
     "ci": "biome check . && tsc --noEmit && vitest run --coverage && tsdown",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "changeset publish"
+    "release": "changeset publish",
+    "test:perf": "vitest run --config vitest.perf.config.ts"
   },
   "dependencies": {
-    "@clack/prompts": "1.9.0",
-    "@strutvane/contracts": "0.1.0-next.0",
-    "@strutvane/devkit": "0.1.0-next.0"
+    "@clack/prompts": "1.9.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.7",
     "@changesets/cli": "3.0.3",
-    "@strutvane/core": "0.1.0-next.0",
     "@types/node": "24.19.2",
     "@vitest/coverage-v8": "5.1.0",
+    "fast-check": "4.10.2",
     "tsdown": "0.23.7",
     "typescript": "6.0.3",
-    "vitest": "5.1.0",
-    "zod": "4.6.7"
+    "vitest": "5.1.0"
+  },
+  "strutvane": {
+    "allowConsole": []
   }
 }
