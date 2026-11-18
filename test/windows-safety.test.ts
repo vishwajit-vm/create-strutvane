@@ -52,6 +52,41 @@ describe('no shell, no shims', () => {
     expect(result).toMatchObject({ code: -1, notFound: true })
   })
 
+  // Regression (class: a write to a program's stdin after it stopped reading crashes the installer).
+  // On Linux CI, `git --version` exited before the empty stdin write; the unhandled EPIPE killed
+  // `npm run setup` (exit 1) instead of the step carrying on.
+  it('a program that exits without reading its input is a normal result, not a crash', async () => {
+    const logFile = join(tempFolder(), 'run.log')
+    const result = await nodeSpawner({
+      command: process.execPath,
+      args: ['-e', 'process.exit(3)'],
+      cwd: process.cwd(),
+      // Far more than a pipe buffer holds, so the write is still pending when the program exits.
+      input: 'x'.repeat(4 * 1024 * 1024),
+      logFile,
+    })
+    expect(result).toMatchObject({ code: 3, notFound: false })
+    expect(readFileSync(logFile, 'utf8')).toContain('[exit code 3]')
+  })
+
+  it('input reaches the program; without input, stdin is already at its end (no prompt can wait)', async () => {
+    const echo =
+      'let s="";process.stdin.on("data",(c)=>{s+=c}).on("end",()=>process.stdout.write("["+s+"]"))'
+    const sent = await nodeSpawner({
+      command: process.execPath,
+      args: ['-e', echo],
+      cwd: process.cwd(),
+      input: 'hello',
+    })
+    expect(sent).toMatchObject({ code: 0, output: '[hello]' })
+    const none = await nodeSpawner({
+      command: process.execPath,
+      args: ['-e', echo],
+      cwd: process.cwd(),
+    })
+    expect(none).toMatchObject({ code: 0, output: '[]' })
+  })
+
   it('installs without dependency scripts: npm install the first time, npm ci once the lockfile exists', () => {
     expect(installArgs(true)).toEqual(['ci', '--ignore-scripts', '--no-audit', '--no-fund'])
     expect(installArgs(false)[0]).toBe('install')

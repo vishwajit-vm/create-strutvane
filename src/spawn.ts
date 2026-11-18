@@ -158,7 +158,12 @@ export const nodeSpawner: Spawner = (spec) =>
       env: { ...process.env, ...spec.env },
       shell: false, // explicit: see the module comment
       windowsHide: true, // no console window flashing up for each git/docker call on Windows
-      stdio: spec.inherit === true ? 'inherit' : ['pipe', 'pipe', 'pipe'],
+      // No input: stdin is the null device (immediate end of input, so nothing ever waits on a
+      // prompt), not a pipe we would have to write to.
+      stdio:
+        spec.inherit === true
+          ? 'inherit'
+          : [spec.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     })
     const collect = (chunk: Buffer) => {
       const text = chunk.toString()
@@ -167,7 +172,14 @@ export const nodeSpawner: Spawner = (spec) =>
     }
     child.stdout?.on('data', collect)
     child.stderr?.on('data', collect)
-    if (child.stdin !== null) child.stdin.end(spec.input ?? '')
+    if (child.stdin !== null) {
+      // A program may exit, or close its stdin, before reading what we send (`git --version`
+      // never reads it). Writing then fails with EPIPE (EOF on Windows), and an 'error' event
+      // without a listener would crash the whole installer (it did, on Linux CI). The exit code
+      // already says how the program ended, so the write failure is only logged.
+      child.stdin.on('error', (error: Error) => log(`\n[input not read: ${error.message}]\n`))
+      child.stdin.end(spec.input)
+    }
     child.on('error', (error: NodeJS.ErrnoException) => {
       log(`\n[could not start: ${error.message}]\n`)
       resolvePromise({ code: -1, output: error.message, notFound: error.code === 'ENOENT' })
