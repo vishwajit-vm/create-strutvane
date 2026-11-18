@@ -344,6 +344,9 @@ describe('Docker mode files (everything in containers, like Sail)', () => {
     const project = renderProject(options())
     const env = parseEnv(file(project, '.env'))
     expect(env.get('DB_HOST')).toBe('db')
+    // The db container serves no TLS on the private compose network: without an explicit
+    // `disable` the framework's production-safe default asks for TLS and migrate fails.
+    expect(env.get('DB_SSLMODE')).toBe('disable')
     expect(env.get('MAIL_HOST')).toBe('mailpit')
     expect(env.get('FORWARD_DB_PORT')).toBe('3306')
     expect(JSON.parse(file(project, 'strutvane.json')).answers.docker).toBe(true)

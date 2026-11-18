@@ -199,6 +199,9 @@ function dockerDatabase(options: ProjectOptions): EnvSection {
     { key: 'DB_CONNECTION', value: connectionName(server) },
     { key: 'DB_HOST', value: 'db' },
     { key: 'DB_PORT', value: port },
+    // The `db` container is only reachable on the private compose network and serves no TLS;
+    // without this the framework's production-safe default asks for TLS and every connection fails.
+    { key: 'DB_SSLMODE', value: 'disable' },
     { key: 'FORWARD_DB_PORT', value: port },
     { key: 'DB_DATABASE', value: id },
     // Created next to the dev database on first start, so tests never touch local data.
