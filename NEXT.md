@@ -74,6 +74,14 @@ Once strutvane-skeleton tags `v0.2.0-next.0`:
 `STRUT_SKELETON_REPO=<clone>`, commit `skeleton/`. (A skeleton fix for the follow-ups above means
 a new pin anyway.)
 
+## Gate status (stop 2026-11-18, usage limit)
+
+- Full gate (`npm run ci`) NOT run yet on this branch: run 1 was started and stopped at the STOP.
+  Next: gate 3x with `STRUT_SKELETON_REPO=<skeleton clone>`, then fill R1/R2 in RELEASE-READINESS.md.
+- Verified by focused runs only (not the full gate): SQLite e2e 10/10, skeleton-render +
+  generated-apps 33/33, vendoring 9/9, unit suite 459 passed / 2 skipped (before the last fixes),
+  check-package OK (74 files), framework integration passed on f658430.
+
 ## How to verify
 
 ```text
