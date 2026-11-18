@@ -220,8 +220,9 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --start-interval=2s -
   CMD node -e "fetch('http://127.0.0.1:' + (process.env.APP_PORT || 3000) + '/up').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
 # The framework's own CLI runs as PID 1 so it receives SIGTERM and shuts down gracefully.
 # (strut.js waits for its child synchronously, so as PID 1 it can't pass the signal on and
-# docker stop would kill the app after the grace period.)
-CMD ["node", "node_modules/@strutvane/framework/dist/console/bin.mjs", "start"]
+# docker stop would kill the app after the grace period.) npm links the framework's
+# \`strutvane\` command into node_modules/.bin, so this never depends on the package's layout.
+CMD ["node", "node_modules/.bin/strutvane", "start"]
 `
 }
 

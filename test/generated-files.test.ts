@@ -422,9 +422,7 @@ describe('container files (ADR-0021: committed only when chosen)', () => {
     expect(runStage.indexOf('USER node')).toBeLessThan(runStage.indexOf('CMD'))
     // INSTALLER.md §5 bug 4: the framework never writes build/server.js; the image runs the CLI.
     // It runs the framework's CLI directly as PID 1 (not through strut.js) so SIGTERM reaches it.
-    expect(runStage).toMatch(
-      /^CMD \["node", "node_modules\/@strutvane\/framework\/dist\/console\/bin\.mjs", "start"\]$/m,
-    )
+    expect(runStage).toMatch(/^CMD \["node", "node_modules\/\.bin\/strutvane", "start"\]$/m)
     expect(runStage).not.toMatch(/^CMD \["node", "strut"/m)
     expect(runStage).toMatch(/^ENV STRUTVANE_IN_CONTAINER=1$/m)
     expect(dockerfile).not.toContain('build/server.js')
