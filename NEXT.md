@@ -52,7 +52,9 @@ Branch progress for the switch from inline templates to the vendored strutvane-s
   fixed on `fix/release-0.2`. The integration test skips on exactly this.
   Verified 2026-11-18 against a tarball packed from `fix/release-0.2` at 2492d9f (compat ^0.2):
   the generated SQLite API app installs it and `node strut migrate` creates `users` and
-  `migrations` (test passed). Against `main` 6dfc239 it skips (compat ^0.1).
+  `migrations` (test passed). Again on 2026-11-18 against `fix/release-0.2` at f658430 (all 5
+  framework blockers fixed): passed. Against `main` 6dfc239 it skips (compat ^0.1). Both releases
+  still refuse the skeleton `user.policy.ts` in `node strut registry:build` (skeleton follow-up b).
 - **auth**: add `createFirstAdmin(db, { name, email })` (driver-neutral, idempotent; password
   from `STRUT_SEED_ADMIN_PASSWORD` or generated and shown once; must-change flag in auth's own
   migration).
