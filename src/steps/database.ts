@@ -15,6 +15,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { createConnection } from 'node:net'
 import { join } from 'node:path'
+import { DOCKER_INFO_ARGS, runsWindowsContainers } from '../docker-info.ts'
 import { commentOutEnvKey, parseEnv, setEnvValue } from '../env-file.ts'
 import { postgresRoles } from '../names.ts'
 import { DATABASE_LABELS } from '../options.ts'
@@ -365,7 +366,7 @@ async function checkDocker(context: StepContext): Promise<StepOutcome | undefine
       'Install Docker Desktop (https://docs.docker.com/get-docker/; on Windows use the WSL2 backend), or set up without Docker: your own database server (XAMPP, WAMP, MAMP, Laragon, Postgres.app) or SQLite.',
     )
   }
-  const info = await run(['info', '--format', '{{.ServerVersion}}'])
+  const info = await run([...DOCKER_INFO_ARGS])
   if (info.code !== 0) {
     const permission = /permission denied/i.test(info.output)
     return failed(
@@ -377,6 +378,13 @@ async function checkDocker(context: StepContext): Promise<StepOutcome | undefine
         ? 'Add yourself to the docker group (sudo usermod -aG docker $USER), log out and in, then choose Retry.'
         : 'Start Docker Desktop, wait until it says "running", then choose Retry.',
       lastLines(info.output, 3),
+    )
+  }
+  if (runsWindowsContainers(info.output)) {
+    return failed(
+      'docker-stopped',
+      'Docker is running Windows containers, but the app needs Linux containers.',
+      'In Docker Desktop, choose "Switch to Linux containers..." (tray icon menu), then choose Retry. Without Docker Desktop (Windows Server), set up without Docker: your own database server or SQLite.',
     )
   }
   const composeVersion = await run(['compose', 'version'])

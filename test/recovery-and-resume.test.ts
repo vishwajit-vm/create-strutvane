@@ -220,6 +220,22 @@ describe('Docker failures', () => {
     expect(statusOf(result.directory)).toMatchObject({ database: 'failed', migrate: 'pending' })
   })
 
+  // Regression (class: an engine that answers `docker info` but cannot run the app's Linux images).
+  // Docker Desktop in "Windows containers" mode, and GitHub's Windows runners, only failed later at
+  // `compose up` with "no matching manifest for windows/amd64".
+  it('Docker running Windows containers (CI): exit 2 with the switch hint, no container started', async () => {
+    const result = await create(['--yes', '--docker'], {
+      docker: (spec) => (spec.args[0] === 'info' ? { output: '29.8.2 windows\n' } : undefined),
+    })
+    expect(result.code).toBe(2)
+    expect(result.output()).toMatch(/Docker is running Windows containers/)
+    expect(result.output()).toMatch(/Switch to Linux containers/)
+    expect(result.world.calls.map(describeCall).some((call) => call.includes('compose'))).toBe(
+      false,
+    )
+    expect(statusOf(result.directory)).toMatchObject({ database: 'failed', migrate: 'pending' })
+  })
+
   it('port taken at `compose up` time: moves only the port Docker names, then retries', async () => {
     let ups = 0
     const result = await create(['--yes'], {

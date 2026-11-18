@@ -11,6 +11,7 @@
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { ArgsError, helpText, type ParsedArgs, parseCommandLine } from './args.ts'
+import { DOCKER_INFO_ARGS, runsWindowsContainers } from './docker-info.ts'
 import { envValueProblem } from './env-file.ts'
 import { EXIT, type ExitCode } from './exit-codes.ts'
 import { readyLines, unfinishedLines } from './finish.ts'
@@ -264,15 +265,18 @@ async function create(parsed: ParsedArgs, environment: InstallerEnvironment): Pr
   return finish(result, options, { interactive, parsed, environment, reporter })
 }
 
-/** Is Docker installed and its engine running? (`docker info` answers; never throws.) */
+/**
+ * Is Docker installed, its engine running, and able to run the app's Linux images? (`docker info`
+ * answers and the engine is not in Windows-containers mode; never throws.)
+ */
 async function dockerIsRunning(environment: InstallerEnvironment): Promise<boolean> {
   try {
     const result = await environment.spawn({
       command: environment.env['STRUT_CONTAINER_CLI'] ?? 'docker',
-      args: ['info', '--format', '{{.ServerVersion}}'],
+      args: [...DOCKER_INFO_ARGS],
       cwd: environment.cwd,
     })
-    return result.code === 0
+    return result.code === 0 && !runsWindowsContainers(result.output)
   } catch {
     return false
   }

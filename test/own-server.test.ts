@@ -68,6 +68,20 @@ describe('question 14: Docker is the default only when it is running (never requ
     expect(result.output()).toMatch(/No database password: fine for XAMPP/)
   })
 
+  it('Docker running Windows containers counts as "not usable": --yes sets up your own server', async () => {
+    const result = await create(['--yes', '--no-git'], {
+      docker: (spec) => (spec.args[0] === 'info' ? { output: '29.8.2 windows\n' } : undefined),
+    })
+    expect(result.code).toBe(0)
+    expect(result.world.calls.map(describeCall)).toEqual([
+      'docker info',
+      'npm install',
+      'strut db:prepare',
+      'strut migrate',
+    ])
+    expect(existsSync(join(result.directory, 'docker'))).toBe(false)
+  })
+
   it('interactive: the Docker question starts on "Without Docker" when Docker is not running', async () => {
     const { prompter, initials } = scriptedPrompter({
       ...RECOMMENDED_ANSWERS,
@@ -311,13 +325,14 @@ describe('connection details', () => {
       password: 'p@ss',
       sslMode: 'require',
     })
-    expect(parseDatabaseUrl('postgresql://app:x@db.example.com/shop')).toMatchObject({
+    const postgresUrl = 'postgresql://app:x@db.example.com/shop' // trufflehog:ignore (fake DSN)
+    expect(parseDatabaseUrl(postgresUrl)).toMatchObject({
       database: 'postgres',
       port: 5432,
     })
     for (const bad of [
       'not a url Secret-1',
-      'http://root:Secret-1@h/db',
+      'http://root:Secret-1@h/db', // trufflehog:ignore
       'mysql://root:Secret-1@h/',
       'mysql://root:Secret-1@h/db?sslmode=maybe',
     ]) {

@@ -47,7 +47,7 @@ function success(spec: CommandSpec): FakeAnswer {
     return {
       output: 'Migrations run (3 new, 3 total)\nAdmin created: admin@acme.test\nDatabase seeded\n',
     }
-  if (program === 'docker' && spec.args[0] === 'info') return { output: '29.8.2\n' }
+  if (program === 'docker' && spec.args[0] === 'info') return { output: '29.8.2 linux\n' }
   if (program === 'git') {
     const [command, flag] = spec.args
     if (command === 'rev-parse' && flag === '--show-toplevel')

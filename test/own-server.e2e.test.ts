@@ -5,8 +5,8 @@
  * itself runs WITHOUT Docker, pointed at them by host and port, exactly like a user would.
  *
  * Isolation: unique container names (`s13own-<kind>-<pid>-<random>`), ports chosen by Docker on
- * 127.0.0.1, everything removed in afterAll. Skipped when Docker is not available. The drivers
- * (mysql2, pg) are installed from the npm registry, like a real first run.
+ * 127.0.0.1, everything removed in afterAll. Skipped unless Docker runs Linux containers here.
+ * The drivers (mysql2, pg) are installed from the npm registry, like a real first run.
  */
 import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
@@ -14,15 +14,12 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { parseEnv } from '../src/env-file.ts'
+import { linuxDockerWorks } from './helpers/docker.ts'
 import { tempFolder } from './helpers/fakes.ts'
 import { localPackages } from './helpers/local-packages.ts'
 
 const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url))
-const dockerWorks =
-  spawnSync('docker', ['info', '--format', '{{.ServerVersion}}'], {
-    encoding: 'utf8',
-    timeout: 20_000,
-  }).status === 0
+const dockerWorks = linuxDockerWorks()
 const suffix = `${process.pid.toString(36)}-${Math.random().toString(36).slice(2, 6)}`
 const containers: string[] = []
 // The Strutvane packages are local stand-ins (not on npm yet); the drivers come from the registry.

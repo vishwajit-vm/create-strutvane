@@ -1,6 +1,6 @@
 /**
- * Real Docker smoke tests (skipped when Docker is not available): the installer runs in Docker
- * mode for real, so containers start, `npm install`, migrations and seeding run INSIDE the app
+ * Real Docker smoke tests (skipped unless Docker runs Linux containers here): the installer runs
+ * in Docker mode for real, so containers start, `npm install`, migrations and seeding run INSIDE the app
  * container, and `node strut` on the host forwards into it. The Strutvane packages are local
  * stand-ins (`STRUT_LOCAL_PACKAGES`), copied into the project, so the container sees them.
  *
@@ -18,17 +18,14 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 import { parseEnv } from '../src/env-file.ts'
+import { linuxDockerWorks } from './helpers/docker.ts'
 import { tempFolder } from './helpers/fakes.ts'
 import { localPackages } from './helpers/local-packages.ts'
 
 const PACKAGES = localPackages()
 
 const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url))
-const dockerWorks =
-  spawnSync('docker', ['info', '--format', '{{.ServerVersion}}'], {
-    encoding: 'utf8',
-    timeout: 20_000,
-  }).status === 0
+const dockerWorks = linuxDockerWorks()
 
 /** Projects created here, removed in afterAll (only these). */
 const created: { project: string; directory: string }[] = []
@@ -411,7 +408,7 @@ describe.skipIf(!dockerWorks)('the generated production image (ADR-0021)', () =>
 })
 
 describe.skipIf(dockerWorks)('real Docker mode', () => {
-  it('is skipped: Docker is not available on this machine', () => {
+  it('is skipped: Docker with Linux containers is not available on this machine', () => {
     writeFileSync(join(tempFolder(), 'skipped.txt'), 'docker not available')
   })
 })
