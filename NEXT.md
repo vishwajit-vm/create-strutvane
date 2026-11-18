@@ -53,6 +53,9 @@ Branch progress for the switch from inline templates to the vendored strutvane-s
 - **auth**: add `createFirstAdmin(db, { name, email })` (driver-neutral, idempotent; password
   from `STRUT_SEED_ADMIN_PASSWORD` or generated and shown once; must-change flag in auth's own
   migration).
+- **tooling**: the synced `check-package.mjs` (R5) refuses test folders/files in a tarball, which
+  also hits template payload; the installer stores the app's tests as `_tests/…/*._test.ts` (like
+  `_gitignore`). An allowlist for template folders in tooling would make that unnecessary.
 - **installer (later)**: the cache question still says "Database (no extra service)"; it maps to
   `CACHE_STORE=file`. Relabel when the question wording is next touched. There are no CSRF or
   maintenance questions to wire.

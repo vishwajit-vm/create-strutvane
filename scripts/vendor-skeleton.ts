@@ -58,8 +58,10 @@ let ref = values.ref
 if (ref === undefined) {
   try {
     ref = readVendorRecord(root).ref
-  } catch {
-    fail('no --ref given and no skeleton/vendor.json to take it from.')
+  } catch (error) {
+    fail(
+      `no --ref given, and skeleton/vendor.json cannot give one (${error instanceof Error ? error.message : String(error)}).`,
+    )
   }
 }
 

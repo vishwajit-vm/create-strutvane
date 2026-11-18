@@ -104,6 +104,16 @@
       "blob": "f6605efdae7d02cc1e9b9601471450ecdaf307a6"
     },
     {
+      "path": "template/tests/feature/health.test.ts",
+      "stored": "template/_tests/feature/health._test.ts",
+      "blob": "06669b2333a7653f81622744917c91d68839df70"
+    },
+    {
+      "path": "template/tests/unit/health.controller.test.ts",
+      "stored": "template/_tests/unit/health.controller._test.ts",
+      "blob": "a12df42b6c58f5a108a88c278f3f75a969104790"
+    },
+    {
       "path": "template/app/http/controllers/health.controller.ts",
       "stored": "template/app/http/controllers/health.controller.ts",
       "blob": "2cbd0ed4afe22eaf4c0ae118e9e7cf589971144c"
@@ -302,16 +312,6 @@
       "path": "template/strut.js",
       "stored": "template/strut.js",
       "blob": "63adf6ec77ad7d05b8d7ce76694ecdac5b2b30d2"
-    },
-    {
-      "path": "template/tests/feature/health.test.ts",
-      "stored": "template/tests/feature/health.test.ts",
-      "blob": "06669b2333a7653f81622744917c91d68839df70"
-    },
-    {
-      "path": "template/tests/unit/health.controller.test.ts",
-      "stored": "template/tests/unit/health.controller.test.ts",
-      "blob": "a12df42b6c58f5a108a88c278f3f75a969104790"
     },
     {
       "path": "template/tsconfig.json",

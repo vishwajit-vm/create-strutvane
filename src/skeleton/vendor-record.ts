@@ -49,18 +49,33 @@ const RENAMED: Readonly<Record<string, string>> = Object.freeze({
   '.npmrc': '_npmrc',
 })
 
+/** Folder names the synced R5 tarball check refuses to publish (it is meant for our own tests). */
+const TEST_FOLDERS: ReadonlySet<string> = new Set(['test', 'tests', '__tests__', 'fixtures'])
+
 /**
- * The path a skeleton file is stored under here: `.gitignore` and `.npmrc` (in any folder) get a
- * `_` instead of the dot, because npm pack would leave them out of the tarball.
+ * The path a skeleton file is stored under here:
+ * - `.gitignore` and `.npmrc` (in any folder) get a `_` instead of the dot, because npm pack
+ *   would leave them out of the tarball;
+ * - the app's own test files (`tests/…`, `*.test.ts`) get a `_` too (`_tests/…`, `*._test.ts`):
+ *   they are template payload, but the synced R5 check (`check-package.mjs`) refuses test folders
+ *   and test files in a tarball, so they must not look like this package's tests.
+ *
+ * The installer only ever maps skeleton paths to stored paths (never back), so the mapping only
+ * has to be one-to-one.
  *
  * @example
  * storedPath('template/storage/logs/.gitignore') // 'template/storage/logs/_gitignore'
+ * storedPath('template/tests/unit/a.test.ts') // 'template/_tests/unit/a._test.ts'
  */
 export function storedPath(path: string): string {
-  const slash = path.lastIndexOf('/')
-  const name = path.slice(slash + 1)
-  const renamed = RENAMED[name]
-  return renamed === undefined ? path : `${path.slice(0, slash + 1)}${renamed}`
+  const segments = path.split('/')
+  const last = segments.length - 1
+  return segments
+    .map((segment, index) => {
+      if (index < last) return TEST_FOLDERS.has(segment) ? `_${segment}` : segment
+      return RENAMED[segment] ?? segment.replace(/\.(test|spec|test-d)\.([cm]?[jt]sx?)$/, '._$1.$2')
+    })
+    .join('/')
 }
 
 /**

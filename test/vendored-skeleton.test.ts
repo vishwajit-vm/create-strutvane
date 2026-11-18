@@ -63,6 +63,14 @@ describe('the vendored skeleton', () => {
     expect(storedPath('template/.npmrc')).toBe('template/_npmrc')
     expect(storedPath('template/storage/logs/.gitignore')).toBe('template/storage/logs/_gitignore')
     expect(storedPath('template/README.md')).toBe('template/README.md')
+    // The app's own tests must not look like this package's tests to the synced R5 check.
+    expect(storedPath('template/tests/unit/health.controller.test.ts')).toBe(
+      'template/_tests/unit/health.controller._test.ts',
+    )
+    expect(storedPath('template/tests/feature/x.spec.tsx')).toBe(
+      'template/_tests/feature/x._spec.tsx',
+    )
+    expect(storedPath('template/app/testing.ts')).toBe('template/app/testing.ts')
     const stored = record.files.map((file) => file.stored)
     expect(stored.filter((path) => /(^|\/)\.(gitignore|npmrc)$/.test(path))).toEqual([])
     expect(stored).toContain('template/_gitignore')
@@ -152,5 +160,14 @@ describe('the vendored skeleton', () => {
     }
     expect(shipped).toContain(`${SKELETON_FOLDER}/${VENDOR_RECORD}`)
     expect([...shipped].filter((path) => path.startsWith(`${SKELETON_FOLDER}/src/`))).toEqual([])
+    // The synced check-package.mjs (R5) refuses test folders, test files, env files and .npmrc.
+    const refused = [...shipped].filter(
+      (path) =>
+        /(?:^|\/)(?:test|tests|__tests__|fixtures|__fixtures__|coverage)\//.test(path) ||
+        /\.(?:test|spec|test-d)\.[cm]?[jt]sx?$/.test(path) ||
+        /(?:^|\/)\.env(?:\.(?!example$)[^/]*)?$/.test(path) ||
+        /(?:^|\/)\.npmrc$/.test(path),
+    )
+    expect(refused).toEqual([])
   })
 })
