@@ -36,7 +36,10 @@
   },
   "files": [
     "dist",
-    "templates",
+    "skeleton/LICENSE",
+    "skeleton/skeleton.json",
+    "skeleton/template",
+    "skeleton/vendor.json",
     "README.md",
     "LICENSE"
   ],
@@ -61,6 +64,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "build": "tsdown",
+    "vendor:skeleton": "node scripts/vendor-skeleton.ts",
     "ci": "biome check . && tsc --noEmit && vitest run --coverage && tsdown",
     "changeset": "changeset",
     "version-packages": "changeset version",

@@ -1,0 +1,327 @@
+{
+  "repository": "https://github.com/vishwajit-vm/strutvane-skeleton",
+  "ref": "ea317419597007d1a23189320a56e4958605142f",
+  "commit": "ea317419597007d1a23189320a56e4958605142f",
+  "files": [
+    {
+      "path": "LICENSE",
+      "stored": "LICENSE",
+      "blob": "5035ba703e4edb50cd8f61b55dc62a4516b3fc82"
+    },
+    {
+      "path": "skeleton.json",
+      "stored": "skeleton.json",
+      "blob": "f23776d7f09a7d44f7dad00eab0b199e578967af"
+    },
+    {
+      "path": "src/manifest.ts",
+      "stored": "src/manifest.ts",
+      "blob": "145abedb3b3e1de845fc5371e95ac9083e425638"
+    },
+    {
+      "path": "src/render.ts",
+      "stored": "src/render.ts",
+      "blob": "76932cd70d4d739ff21b1d7bb1e15fd094fdfb93"
+    },
+    {
+      "path": "template/.editorconfig",
+      "stored": "template/.editorconfig",
+      "blob": "8c52ff9378d3af25a3cbe171ea37c8c3d56d5203"
+    },
+    {
+      "path": "template/.env.example",
+      "stored": "template/.env.example",
+      "blob": "675a8cff9f22e6c38f618597a839befbcce32c2f"
+    },
+    {
+      "path": "template/.strutvane/resources.json",
+      "stored": "template/.strutvane/resources.json",
+      "blob": "c05dddaf906338a55e9f998cbb5f7ff1c076d295"
+    },
+    {
+      "path": "template/.strutvane/schema.json",
+      "stored": "template/.strutvane/schema.json",
+      "blob": "f2b2f6605337e081195c8b394dffc9103b9a0f2f"
+    },
+    {
+      "path": "template/.strutvane/sql/migrations.mariadb.sql",
+      "stored": "template/.strutvane/sql/migrations.mariadb.sql",
+      "blob": "07520cfa9a094d2b59b9c7be25ded8b464abec8d"
+    },
+    {
+      "path": "template/.strutvane/sql/migrations.mysql.sql",
+      "stored": "template/.strutvane/sql/migrations.mysql.sql",
+      "blob": "5b0b872e473562a647da20c7ee47f784b47cab62"
+    },
+    {
+      "path": "template/.strutvane/sql/migrations.postgres.sql",
+      "stored": "template/.strutvane/sql/migrations.postgres.sql",
+      "blob": "768ad164ccb3fb0c6ac1f61006cf58223072a52d"
+    },
+    {
+      "path": "template/.strutvane/sql/migrations.sqlite.sql",
+      "stored": "template/.strutvane/sql/migrations.sqlite.sql",
+      "blob": "85e2b98fb6cc51ee059f91c85f4b1fb75e2a2b06"
+    },
+    {
+      "path": "template/.strutvane/sql/schema.mariadb.sql",
+      "stored": "template/.strutvane/sql/schema.mariadb.sql",
+      "blob": "b6e690d7bf69c1bcb830ba5607f3799a5cc1fa3b"
+    },
+    {
+      "path": "template/.strutvane/sql/schema.mysql.sql",
+      "stored": "template/.strutvane/sql/schema.mysql.sql",
+      "blob": "d7845ecdc92c95c83024ea3aec31f654c8575640"
+    },
+    {
+      "path": "template/.strutvane/sql/schema.postgres.sql",
+      "stored": "template/.strutvane/sql/schema.postgres.sql",
+      "blob": "71ef4b9fc5083c7152d0d93f453109e05a0336da"
+    },
+    {
+      "path": "template/.strutvane/sql/schema.sqlite.sql",
+      "stored": "template/.strutvane/sql/schema.sqlite.sql",
+      "blob": "0aa22cd428a9ac55c1324f21f8dce86a8798810f"
+    },
+    {
+      "path": "template/.strutvane/types/models.d.ts",
+      "stored": "template/.strutvane/types/models.d.ts",
+      "blob": "52cfebe13a8ae6e3a08c9e18fb718bd9a99a117a"
+    },
+    {
+      "path": "template/README.md",
+      "stored": "template/README.md",
+      "blob": "14bad99030187ee7daa0b6e194b9ab3da6d8fa62"
+    },
+    {
+      "path": "template/.gitignore",
+      "stored": "template/_gitignore",
+      "blob": "3baae3795cc48028294839a10f54a190a0b4a9ea"
+    },
+    {
+      "path": "template/.npmrc",
+      "stored": "template/_npmrc",
+      "blob": "f6605efdae7d02cc1e9b9601471450ecdaf307a6"
+    },
+    {
+      "path": "template/app/http/controllers/health.controller.ts",
+      "stored": "template/app/http/controllers/health.controller.ts",
+      "blob": "2cbd0ed4afe22eaf4c0ae118e9e7cf589971144c"
+    },
+    {
+      "path": "template/app/http/controllers/welcome.controller.ts",
+      "stored": "template/app/http/controllers/welcome.controller.ts",
+      "blob": "14d2eb07f987d455950ec4a90ade3df19c301800"
+    },
+    {
+      "path": "template/app/http/middleware/.gitkeep",
+      "stored": "template/app/http/middleware/.gitkeep",
+      "blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+    },
+    {
+      "path": "template/app/http/requests/.gitkeep",
+      "stored": "template/app/http/requests/.gitkeep",
+      "blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+    },
+    {
+      "path": "template/app/models/user.ts",
+      "stored": "template/app/models/user.ts",
+      "blob": "5a15e98aa56c7f2773af72a299d8361916b5332f"
+    },
+    {
+      "path": "template/app/policies/user.policy.ts",
+      "stored": "template/app/policies/user.policy.ts",
+      "blob": "1014420a0b771f181f4c431fa7ac1c4217dca30a"
+    },
+    {
+      "path": "template/app/providers/app.provider.ts",
+      "stored": "template/app/providers/app.provider.ts",
+      "blob": "0ff03627ec9f0c899db00c21ee01a00f2c8e8717"
+    },
+    {
+      "path": "template/bootstrap/app.ts",
+      "stored": "template/bootstrap/app.ts",
+      "blob": "c16df30418d1c2a5ee7900383a89478693f34a3f"
+    },
+    {
+      "path": "template/bootstrap/cache/.gitignore",
+      "stored": "template/bootstrap/cache/_gitignore",
+      "blob": "d6b7ef32c8478a48c3994dcadc86837f4371184d"
+    },
+    {
+      "path": "template/bootstrap/providers.ts",
+      "stored": "template/bootstrap/providers.ts",
+      "blob": "29a2d455952f38b8f3ba39a119aceae05f08ea58"
+    },
+    {
+      "path": "template/config/app.ts",
+      "stored": "template/config/app.ts",
+      "blob": "d06f6b96e7abcfb352459d3101f1b815aacaa395"
+    },
+    {
+      "path": "template/config/auth.ts",
+      "stored": "template/config/auth.ts",
+      "blob": "53a2389e7a33bd99c9e3e8febc08fde93772f9bb"
+    },
+    {
+      "path": "template/config/cache.ts",
+      "stored": "template/config/cache.ts",
+      "blob": "c3d4fabb3925031446ac37de3ebfffed1cc40d5c"
+    },
+    {
+      "path": "template/config/database.ts",
+      "stored": "template/config/database.ts",
+      "blob": "8908132f0049aaef8615511a63a08620c0da7145"
+    },
+    {
+      "path": "template/config/filesystems.ts",
+      "stored": "template/config/filesystems.ts",
+      "blob": "486c09ab5173129d22239fd508a9b7e865458ba9"
+    },
+    {
+      "path": "template/config/index.ts",
+      "stored": "template/config/index.ts",
+      "blob": "6af143d736f0541348a5f67857c1c43143628b99"
+    },
+    {
+      "path": "template/config/logging.ts",
+      "stored": "template/config/logging.ts",
+      "blob": "119823c4c91eddb4c6a0f520ea14f3cf2c813dda"
+    },
+    {
+      "path": "template/config/session.ts",
+      "stored": "template/config/session.ts",
+      "blob": "4cc4de71984137e8a1d46e69a280d25bc075916f"
+    },
+    {
+      "path": "template/config/tenancy.ts",
+      "stored": "template/config/tenancy.ts",
+      "blob": "9526a011d1061a09714e49d1756b69f002bc5ef2"
+    },
+    {
+      "path": "template/config/ui.ts",
+      "stored": "template/config/ui.ts",
+      "blob": "dcd3330bc688be1c6861eaa48d762f642c6fabc0"
+    },
+    {
+      "path": "template/database/.gitignore",
+      "stored": "template/database/_gitignore",
+      "blob": "9b19b93c9f13d72749cc3bac760a28325116f3f1"
+    },
+    {
+      "path": "template/database/factories/user.factory.ts",
+      "stored": "template/database/factories/user.factory.ts",
+      "blob": "4d9f8f84984676c770c8f10e0f93b2f29acb0d36"
+    },
+    {
+      "path": "template/database/migrations/0001_01_01_000000_create_users_table.ts",
+      "stored": "template/database/migrations/0001_01_01_000000_create_users_table.ts",
+      "blob": "5aed08a8e8cfda8c1d49de557331beedc7866cce"
+    },
+    {
+      "path": "template/database/seeders/database.seeder.ts",
+      "stored": "template/database/seeders/database.seeder.ts",
+      "blob": "1fbf2b91b71fa29a6f284e5e01bd97f5c9b81e01"
+    },
+    {
+      "path": "template/database/seeders/user.seeder.ts",
+      "stored": "template/database/seeders/user.seeder.ts",
+      "blob": "9732034720e7c8bb0c5b374264a1f0eee010f440"
+    },
+    {
+      "path": "template/package.json",
+      "stored": "template/package.json",
+      "blob": "a88a21ae9e2987c96dd945b1a5b942468f5e1b7e"
+    },
+    {
+      "path": "template/public/robots.txt",
+      "stored": "template/public/robots.txt",
+      "blob": "eb0536286f3081c6c0646817037faf5446e3547d"
+    },
+    {
+      "path": "template/resources/ui/index.html",
+      "stored": "template/resources/ui/index.html",
+      "blob": "9ca96b1b4ab810910e714baedeecbab34050f9fa"
+    },
+    {
+      "path": "template/resources/ui/main.tsx",
+      "stored": "template/resources/ui/main.tsx",
+      "blob": "97428a25d5468a1db9b7765f9f011653bacbaa4e"
+    },
+    {
+      "path": "template/resources/ui/theme.css",
+      "stored": "template/resources/ui/theme.css",
+      "blob": "25553e5a08386ea751145ce6b23231edc5a9ea04"
+    },
+    {
+      "path": "template/resources/ui/tsconfig.json",
+      "stored": "template/resources/ui/tsconfig.json",
+      "blob": "7222a9721bb206ba6af99c7aa0fbbe0756b3ccae"
+    },
+    {
+      "path": "template/routes/api.ts",
+      "stored": "template/routes/api.ts",
+      "blob": "0324fd3d0668ae880bf832d0cd8f9769d8e21bfd"
+    },
+    {
+      "path": "template/routes/web.ts",
+      "stored": "template/routes/web.ts",
+      "blob": "15efa7eb2959ae31859ee9c230ab491314b4a8a0"
+    },
+    {
+      "path": "template/storage/app/.gitignore",
+      "stored": "template/storage/app/_gitignore",
+      "blob": "8f4803c05638697d84ea28d40693324ec70f7990"
+    },
+    {
+      "path": "template/storage/app/public/.gitignore",
+      "stored": "template/storage/app/public/_gitignore",
+      "blob": "d6b7ef32c8478a48c3994dcadc86837f4371184d"
+    },
+    {
+      "path": "template/storage/framework/.gitignore",
+      "stored": "template/storage/framework/_gitignore",
+      "blob": "bcaa79d5814f8ba9bf2f0a38515bf56cb28759ec"
+    },
+    {
+      "path": "template/storage/framework/cache/.gitignore",
+      "stored": "template/storage/framework/cache/_gitignore",
+      "blob": "d6b7ef32c8478a48c3994dcadc86837f4371184d"
+    },
+    {
+      "path": "template/storage/framework/sessions/.gitignore",
+      "stored": "template/storage/framework/sessions/_gitignore",
+      "blob": "d6b7ef32c8478a48c3994dcadc86837f4371184d"
+    },
+    {
+      "path": "template/storage/logs/.gitignore",
+      "stored": "template/storage/logs/_gitignore",
+      "blob": "d6b7ef32c8478a48c3994dcadc86837f4371184d"
+    },
+    {
+      "path": "template/strut.js",
+      "stored": "template/strut.js",
+      "blob": "63adf6ec77ad7d05b8d7ce76694ecdac5b2b30d2"
+    },
+    {
+      "path": "template/tests/feature/health.test.ts",
+      "stored": "template/tests/feature/health.test.ts",
+      "blob": "06669b2333a7653f81622744917c91d68839df70"
+    },
+    {
+      "path": "template/tests/unit/health.controller.test.ts",
+      "stored": "template/tests/unit/health.controller.test.ts",
+      "blob": "a12df42b6c58f5a108a88c278f3f75a969104790"
+    },
+    {
+      "path": "template/tsconfig.json",
+      "stored": "template/tsconfig.json",
+      "blob": "378390d3226fa56175a083a397a7a5583576937e"
+    },
+    {
+      "path": "template/vite.config.ts",
+      "stored": "template/vite.config.ts",
+      "blob": "ccc556df6e4e086f00c0b1208c1163595930af93"
+    }
+  ]
+}
