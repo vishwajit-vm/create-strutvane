@@ -1,5 +1,15 @@
 # create-strutvane
 
+## 0.2.0-next.1
+
+### Minor Changes
+
+- e064d13: New apps are rendered from strutvane-skeleton (the app template, like laravel/laravel), vendored at a pinned commit and checked file by file, instead of inline templates. This fixes seven ways the generated app disagreed with framework 0.2: imports from `@strutvane/framework/database` and `/schema`, typed `defineConfig` config files listed in `config/index.ts`, `defineRoutes` with invokable controllers, `npm start` as `node strut start` (the Dockerfile too), factories with a numeric `sequence`, seeders reading `APP_ENV` from `SeedContext.env`, and `CACHE_STORE=file` (there is no database cache store). `.env.example` now comes from the skeleton (production-safe, every key, no secrets, Laravel-style `LOG_*` channels); `.env` gets the local values. `config/cors.ts` and `CORS_ORIGINS` are gone (CORS is off by default). The first-admin seeder calls `@strutvane/auth`'s planned `createFirstAdmin()` and says how to finish when the installed auth does not have it yet. Apps with a UI get a `vitest.config.ts`, so `npm test` finds the tests.
+
+### Patch Changes
+
+- Docker-mode apps now reach their database: the generated `.env` sets `DB_SSLMODE=disable` for the `db` container, which serves no TLS on the private compose network (before, `migrate` failed in every new Docker-mode app). The opt-in production image now starts the framework's `strutvane` command directly as PID 1, so `docker stop` shuts the app down gracefully instead of killing it after the grace period.
+
 ## 0.2.0-next.0
 
 ### Minor Changes
