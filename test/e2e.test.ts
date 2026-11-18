@@ -14,6 +14,7 @@ import { request } from 'node:http'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
+import { stripVTControlCharacters } from 'node:util'
 import { afterAll, describe, expect, it } from 'vitest'
 import { parseEnv } from '../src/env-file.ts'
 import { resolveNpmCli } from '../src/npm-cli.ts'
@@ -51,7 +52,11 @@ function cleanEnvironment(
   }
 }
 
-/** Run a program to completion and return its exit code and output. */
+/**
+ * Run a program to completion and return its exit code and output, without colour codes. Tools
+ * decide on colour from their environment (on GitHub's runners Vitest colours its summary, so
+ * "Tests  4 passed" arrived with escape codes between the words); the assertions are about words.
+ */
 function run(command: string, args: readonly string[], cwd: string, env: NodeJS.ProcessEnv) {
   const result = spawnSync(command, [...args], {
     cwd,
@@ -60,7 +65,10 @@ function run(command: string, args: readonly string[], cwd: string, env: NodeJS.
     timeout: 240_000,
     windowsHide: true,
   })
-  return { code: result.status ?? -1, output: `${result.stdout}${result.stderr}` }
+  return {
+    code: result.status ?? -1,
+    output: stripVTControlCharacters(`${result.stdout}${result.stderr}`),
+  }
 }
 
 /** Request a path with a chosen Host header (fetch cannot set Host). */
@@ -375,7 +383,9 @@ describe('real end-to-end run (SQLite, no Docker)', () => {
     const text = readdirSync(logs)
       .map((name) => readFileSync(join(logs, name), 'utf8'))
       .join('\n')
-    expect(text).toMatch(/npm-cli\.js" install --ignore-scripts/)
+    // npm ran as `node <npm-cli.js>` with install scripts off. The log quotes a path only when it
+    // holds a space (C:\Program Files on Windows, not /usr/bin on Linux), so the quote is optional.
+    expect(text).toMatch(/^\$ \S.*npm-cli\.js"? install --ignore-scripts/m)
     const env = parseEnv(readFileSync(join(directory, '.env'), 'utf8'))
     expect(text).not.toContain(env.get('APP_KEY') ?? 'missing')
   })
