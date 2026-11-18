@@ -35,7 +35,7 @@ Every command the installer prints uses its own channel (`@next` for a pre-relea
 
 ## What it does
 
-1. **Writes the project** (all or nothing: a failure leaves no folder behind), in the Laravel-style layout: `app/http/controllers`, `app/models`, `app/policies`, `bootstrap/app.ts`, `routes/`, `config/`, `database/{migrations,seeders,factories}`, `resources/ui`, `tests/`.
+1. **Writes the project** (all or nothing: a failure leaves no folder behind) from [strutvane-skeleton](https://github.com/vishwajit-vm/strutvane-skeleton), the app template (what `laravel/laravel` is to `laravel/installer`): `app/http/controllers`, `app/models`, `app/policies`, `app/providers`, `bootstrap/app.ts`, `routes/`, typed `config/*.ts` (`defineConfig`), `database/{migrations,seeders,factories}`, `resources/ui`, `storage/`, `tests/`. The installer applies your answers to it and adds only what the template cannot know: `.env`, `strutvane.json`, Docker, CI and editor files, answer-only configs and the first-admin seeder.
 2. **Generates secrets** into `.env` (never `.env.example`): `APP_KEY` is the one root secret; database passwords in Docker mode.
 3. **Picks free ports** and moves away from any taken between the check and the start.
 4. **Starts the database**: your own MySQL, MariaDB or PostgreSQL server (XAMPP, WAMP, MAMP, Laragon, Postgres.app, a local install, a remote or cloud database), Docker (like Laravel Sail: the app, the database and Mailpit in containers), or SQLite. Docker is never required.
@@ -50,14 +50,15 @@ Progress is saved after every step. If one fails, it explains why in plain words
 
 | File | Why |
 |---|---|
-| `package.json` | `@strutvane/framework` plus only the packages your answers bring (never `@strutvane/core`, `contracts`, `cli`, `devkit` or `logs`: they were merged into the framework); the database driver pinned exactly; `engines.node >=24.3`; `devEngines` npm `>=11.19`; scripts that all go through `node strut` |
+| `package.json` | The skeleton's scripts (`npm start` is `node strut start`) with `@strutvane/framework` plus only the packages your answers bring (never `@strutvane/core`, `contracts`, `cli`, `devkit` or `logs`: they were merged into the framework); the database driver pinned exactly; `engines.node >=24.3`; `devEngines` npm `>=11.19`; scripts that all go through `node strut` |
 | `.npmrc` | npm's supply-chain guards: `ignore-scripts`, `strict-allow-scripts` (only the `allowScripts` list may run), `min-release-age=1` (except `@strutvane/*`), `allow-git=none`, `engine-strict` |
 | `strut.js` | `node strut <command>`, the project CLI. It runs the framework's `strutvane` program, forwards into the app container in Docker mode, and handles `setup`, `services:*`, `db:shell` and the `npm`/`npx`/`node`/`shell` pass-throughs |
 | `strutvane.json` | Every answer (never a secret), committed. `npm run setup` sets up a fresh clone from it, and `node strut install:<name>` reads it |
 | `.strutvane/local/` | Machine-local state, git-ignored: setup progress, logs, a per-computer Docker override (`env.json`). The rest of `.strutvane/` is generated and committed |
 | `config/auth.ts` | The sign-in features you picked (`password`, `emailLink`, `registration`, `emailVerification`, `passwordReset`, `passwordConfirmation`, `twoFactor`, `passkeys`, `apiTokens`, `teams`, `impersonation`). Not env keys |
-| `config/cors.ts` | `CORS_ORIGINS` checked at load: empty, a wildcard, a non-origin or http in production each fail with a message that names the key |
-| `Dockerfile`, `.dockerignore` | Only with `--deploy docker` (ADR-0021): multi-stage, non-root, no secrets, `HEALTHCHECK` on `/up`, logs as JSON to stderr |
+| `.env`, `.env.example` | The skeleton's `.env.example` lists every key the config files read, production-safe and without secrets; `.env` gets this machine's values (`APP_ENV=local`, `APP_DEBUG=true`, `LOG_LEVEL=debug`, ports, secrets). Logging channels come from `LOG_CHANNEL`, `LOG_STACK`, `LOG_LEVEL` (ADR-0022) |
+| `database/seeders/admin.seeder.ts` | With sign-in: the first admin through `@strutvane/auth`'s `createFirstAdmin()`. Until the installed auth has it, seeding skips the admin and says how to finish |
+| `Dockerfile`, `.dockerignore` | Only with `--deploy docker` (ADR-0021): multi-stage, non-root, no secrets, runs `node strut start` from the sources, `HEALTHCHECK` on `/up`, logs as JSON to stderr |
 | `.devcontainer/` | Only with `--dev-container` (ADR-0021) |
 | `docker/compose.yaml` | Docker mode only, git-ignored (ADR-0006): every port on 127.0.0.1 |
 
@@ -85,7 +86,7 @@ v1 (`0.1.0-next.0`, pnpm, presets) and v2 have nothing in common but the name: v
 | `--dry-run` | Gone: the review screen shows every answer before anything is written |
 | `sv <command>` (`@strutvane/cli`) | `node strut <command>` (the framework's `strutvane` program) |
 | Dependencies on `@strutvane/core`, `contracts`, `cli`, `devkit`, `logs` | Only `@strutvane/framework` and the chosen packages |
-| `env.schema.ts` (Zod) | `config/*.ts`, validated by the framework at boot; `config/cors.ts` checks `CORS_ORIGINS` |
+| `env.schema.ts` (Zod) | `config/*.ts` (`defineConfig`), validated by the framework at boot |
 | `.strutvane/` git-ignored except `lock.json`, `base/`, `templates/` | `.strutvane/` committed except `.strutvane/local/` |
 | `pnpm-workspace.yaml` guards | `.npmrc` guards (npm `>=11.19`) |
 
@@ -109,6 +110,19 @@ node src/cli.ts my-app --db sqlite --yes     # try it from source (Node strips t
 ```
 
 The end-to-end suites run real npm, git and SQLite, and, when Docker is running, real MySQL 8.4, MariaDB 11 and PostgreSQL 18 containers with unique names that are removed afterwards. Because the Strutvane packages are not on npm yet, they use local stand-ins: `STRUT_LOCAL_PACKAGES=<folder>` makes the installer copy package folders (`strutvane-framework`, …) into the app instead of using the registry. It is also how the ecosystem's umbrella workspace tries an unreleased framework.
+
+### The vendored skeleton
+
+`skeleton/` is a committed copy of strutvane-skeleton at one pinned ref (`skeleton/vendor.json`: the commit and every file's git blob id). Never edit it by hand: the vendoring check test fails. To update it:
+
+```bash
+npm run vendor:skeleton -- --repo <skeleton clone> --ref <tag or commit>
+STRUT_SKELETON_REPO=<skeleton clone> npm run ci   # also compares the record with git ls-tree
+```
+
+`.gitignore` and `.npmrc` files are stored as `_gitignore` / `_npmrc` (npm pack drops them) and renamed back when an app is written.
+
+`STRUT_FRAMEWORK_TARBALL=<framework .tgz>` (from `npm pack` in a framework worktree) runs the opt-in integration test: a generated SQLite API app on the real framework, `node strut migrate`.
 
 ## Works alone, better together
 

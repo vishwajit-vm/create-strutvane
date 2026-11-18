@@ -31,8 +31,8 @@ The v2 installer: `npm create strutvane@next my-app` (`@latest` from 1.0) (hub b
 | `main.ts`, `cli.ts` | The flow, `--resume` (also a fresh clone from `strutvane.json`); `cli.ts` only wires the process |
 | `setup-state.ts` | `.strutvane/local/setup.json`, or `strutvane.json` for a fresh clone |
 | `steps/*` | files, secrets, ports, database (Docker or your own server), install, migrate, git; recovery choices |
-| `templates/*` | Pure functions answers → files (`project.ts`, `app-files.ts`, `env.ts`, `compose.ts`, `workflow-files.ts`) |
-| `templates/strut.js` (repo root `templates/`) | The generated `strut.js`, shipped as a plain file and found through `package-root.ts` |
+| `skeleton/app.ts`, `skeleton/vendor-record.ts` | The app is rendered from the vendored strutvane-skeleton (`skeleton/` at the repo root, pinned in `skeleton/vendor.json`, refreshed only by `npm run vendor:skeleton`) with the skeleton's own `renderSkeleton`/`resolveAnswers` |
+| `templates/*` | What the installer adds on top (pure functions): `project.ts` (assembly, deps), `app-files.ts` (answer-only configs, `config/auth.ts`/`tenancy.ts` generators, admin seeder), `env.ts` (merge onto the skeleton's `.env.example`), `compose.ts`, `workflow-files.ts` |
 
 ## Key behaviours to keep (tests enforce them)
 

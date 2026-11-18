@@ -45,8 +45,23 @@ export function installerAppFiles(options: ProjectOptions): GeneratedFile[] {
     files.push({ path: 'database/seeders/admin.seeder.ts', content: ADMIN_SEEDER })
   if (options.testing === 'vitest-playwright')
     files.push({ path: 'tests/browser/home.spec.ts', content: BROWSER_TEST })
+  // Without it, Vitest reads the UI's vite.config.ts (root: resources/ui) and finds no tests, so
+  // `npm test` fails in every app with a UI. Belongs in the skeleton (follow-up in NEXT.md).
+  if (options.ui !== undefined && options.testing !== 'none')
+    files.push({ path: 'vitest.config.ts', content: VITEST_CONFIG })
   return files
 }
+
+const VITEST_CONFIG = `// The tests' settings (Vitest). This file wins over vite.config.ts, whose root is the React UI
+// (resources/ui): without it Vitest would look for tests there and find none.
+import { defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    include: ['tests/**/*.test.ts'],
+  },
+})
+`
 
 /**
  * A config file whose values are plain data. JSON is valid TypeScript, and every value was

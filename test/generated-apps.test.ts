@@ -127,6 +127,8 @@ describe.each(CASES)('a generated app on disk: $label', (testCase) => {
     expect(tree.filter((path) => /(^|\/)_(gitignore|npmrc)$/.test(path))).toEqual([])
     expect(tree.includes('resources/ui/main.tsx')).toBe(testCase.ui)
     expect(tree.includes('config/ui.ts')).toBe(testCase.ui)
+    // Vitest must not take the UI's vite.config.ts (root resources/ui): npm test found no tests.
+    expect(tree.includes('vitest.config.ts')).toBe(testCase.ui && testCase.tests)
     expect(tree.includes('tests/feature/health.test.ts')).toBe(testCase.tests)
     expect(tree.includes('config/auth.ts')).toBe(testCase.answers.auth !== 'none')
     if (process.platform !== 'win32')

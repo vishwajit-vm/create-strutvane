@@ -212,7 +212,8 @@ describe.skipIf(!dockerWorks)('real Docker mode (everything in containers)', () 
         env.get('DB_USERNAME') ?? '',
         env.get('DB_DATABASE') ?? '',
         '-e',
-        'SELECT COUNT(*) FROM users',
+        // The first admin (sample users from the skeleton's seeder come on top).
+        "SELECT COUNT(*) FROM users WHERE email LIKE 'admin@%'",
       ],
       {
         MYSQL_PWD: env.get('DB_PASSWORD') ?? '',
@@ -257,7 +258,7 @@ describe.skipIf(!dockerWorks)('real Docker mode (everything in containers)', () 
     expect(asApp("SELECT tableowner FROM pg_tables WHERE tablename = 'users'").output).toBe(
       env.get('DB_MIGRATION_USERNAME'),
     )
-    expect(asApp('SELECT COUNT(*) FROM users').output).toBe('1')
+    expect(asApp("SELECT COUNT(*) FROM users WHERE email LIKE 'admin@%'").output).toBe('1')
     expect(
       asApp(
         `SELECT datname FROM pg_database WHERE datname = '${env.get('DB_TEST_DATABASE') ?? ''}'`,
@@ -368,7 +369,7 @@ describe.skipIf(!dockerWorks)('the generated production image (ADR-0021)', () =>
         'sh',
         image,
         '-c',
-        'touch /app/build/server.js 2>&1 || echo read-only',
+        'touch /app/strut.js 2>&1 || echo read-only',
       ]),
     ).toMatch(/read-only/)
 

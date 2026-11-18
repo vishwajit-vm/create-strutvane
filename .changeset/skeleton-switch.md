@@ -1,0 +1,5 @@
+---
+"create-strutvane": minor
+---
+
+New apps are rendered from strutvane-skeleton (the app template, like laravel/laravel), vendored at a pinned commit and checked file by file, instead of inline templates. This fixes seven ways the generated app disagreed with framework 0.2: imports from `@strutvane/framework/database` and `/schema`, typed `defineConfig` config files listed in `config/index.ts`, `defineRoutes` with invokable controllers, `npm start` as `node strut start` (the Dockerfile too), factories with a numeric `sequence`, seeders reading `APP_ENV` from `SeedContext.env`, and `CACHE_STORE=file` (there is no database cache store). `.env.example` now comes from the skeleton (production-safe, every key, no secrets, Laravel-style `LOG_*` channels); `.env` gets the local values. `config/cors.ts` and `CORS_ORIGINS` are gone (CORS is off by default). The first-admin seeder calls `@strutvane/auth`'s planned `createFirstAdmin()` and says how to finish when the installed auth does not have it yet. Apps with a UI get a `vitest.config.ts`, so `npm test` finds the tests.
