@@ -75,13 +75,23 @@ describe('strutvane.json', () => {
     expect(manifest.packages).toContain('@strutvane/billing')
   })
 
-  it('package.json depends on exactly the packages strutvane.json lists (plus the driver)', () => {
+  it('package.json depends on exactly the packages strutvane.json lists, the driver and the UI stack', () => {
     const project = files({ cache: 'redis', monitoring: 'otel', previewCatalogue: true })
     const { packages } = JSON.parse(file(project, 'strutvane.json')) as { packages: string[] }
     const { dependencies } = JSON.parse(file(project, 'package.json')) as {
       dependencies: Record<string, string>
     }
-    expect(Object.keys(dependencies).sort()).toEqual([...packages, 'mysql2'].sort())
+    // The Strutvane packages are exactly the listed ones; the rest is the skeleton's driver and
+    // its React UI stack (exact pins).
+    expect(
+      Object.keys(dependencies)
+        .filter((name) => name.startsWith('@strutvane/'))
+        .sort(),
+    ).toEqual([...packages].sort())
+    const others = Object.keys(dependencies).filter((name) => !name.startsWith('@strutvane/'))
+    expect(others).toContain('mysql2')
+    expect(others).toContain('react')
+    for (const name of others) expect(dependencies[name], name).toMatch(/^\d+\.\d+\.\d+$/)
     // Catalogue packages get a caret range on their newest listed version (preview).
     expect(dependencies['@strutvane/redis']).toMatch(/^\^\d+\.\d+\.\d+$/)
   })
@@ -125,7 +135,7 @@ describe('strutvane.json', () => {
   })
 
   it('refuses to render an absorbed package even if one ever reached the list', () => {
-    expect(() => dependencies({ ...options(), features: [] }, {})).not.toThrow()
+    expect(() => dependencies({ ...options(), features: [] })).not.toThrow()
     expect(ABSORBED_PACKAGES).toEqual([
       '@strutvane/core',
       '@strutvane/contracts',
@@ -384,7 +394,7 @@ describe('container files (ADR-0021: committed only when chosen)', () => {
     ])
   })
 
-  it('the Dockerfile: multi-stage, pinned Node major, npm ci, only build/ + prod deps, non-root USER, HEALTHCHECK on /up', () => {
+  it('the Dockerfile: multi-stage, pinned Node major, npm ci, sources + dist + prod deps, non-root USER, HEALTHCHECK on /up', () => {
     const dockerfile = file(files({ deploy: 'docker' }), 'Dockerfile')
     expect(dockerfile.match(/^FROM /gm)).toHaveLength(3)
     expect(dockerfile).toMatch(/^FROM node:24-bookworm-slim AS build$/m)
@@ -392,15 +402,28 @@ describe('container files (ADR-0021: committed only when chosen)', () => {
     expect(dockerfile).toContain('RUN npm ci --omit=dev --ignore-scripts')
     expect(dockerfile).toMatch(/^USER node$/m)
     expect(dockerfile).toMatch(/^HEALTHCHECK .*\n.*\/up/m)
-    // The last stage copies only node_modules (prod), the stub packages, build/ and package.json.
+    // The last stage copies production node_modules, the app's runtime sources (Node runs the
+    // TypeScript directly) and the built UI: never tests, resources/ sources or .env.
     const runStage = dockerfile.slice(dockerfile.lastIndexOf('\nFROM '))
     const copies = runStage.split('\n').filter((line) => line.startsWith('COPY'))
     expect(copies.map((line) => line.split(' ').at(-1))).toEqual([
       './node_modules',
-      './build',
       './',
+      './app',
+      './bootstrap',
+      './config',
+      './database',
+      './routes',
+      './public',
+      './.strutvane',
+      './dist',
     ])
+    expect(copies.join('\n')).not.toMatch(/tests|\.env/)
     expect(runStage.indexOf('USER node')).toBeLessThan(runStage.indexOf('CMD'))
+    // INSTALLER.md §5 bug 4: the framework never writes build/server.js; the image runs the CLI.
+    expect(runStage).toMatch(/^CMD \["node", "strut", "start"\]$/m)
+    expect(runStage).toMatch(/^ENV STRUTVANE_IN_CONTAINER=1$/m)
+    expect(dockerfile).not.toContain('build/server.js')
   })
 
   // Regression (class: an image that builds but does not run as deployed). Found by building and
@@ -502,12 +525,21 @@ describe('config files follow the answers', () => {
       social: ['github'],
       sso: true,
     })
-    expect(file(project, 'config/cache.ts')).toContain('"store": "redis"')
-    expect(file(project, 'config/filesystems.ts')).toContain('"default": "s3"')
+    // Cache and storage are .env values of the skeleton's typed configs; Redis and S3 switch them
+    // when their packages install (until then the stores the framework has: file, local).
+    const env = parseEnv(file(project, '.env'))
+    expect(env.get('CACHE_STORE')).toBe('file')
+    expect(env.get('FILESYSTEM_DISK')).toBe('local')
+    expect(JSON.parse(file(project, 'strutvane.json')).answers).toMatchObject({
+      cache: 'redis',
+      storage: 's3',
+    })
     expect(file(project, 'config/mail.ts')).toContain('"production": "ses"')
-    expect(file(project, 'config/app.ts')).toMatch(
-      /locale: "de",\n\s+timezone: "Europe\/Berlin",\n\s+currency: "EUR"/,
-    )
+    // The regional defaults are the skeleton's placeholders, in config/app.ts and .env.
+    expect(file(project, 'config/app.ts')).toContain("env.string('APP_LOCALE', 'de')")
+    expect(file(project, 'config/app.ts')).toContain("env.string('APP_TIMEZONE', 'Europe/Berlin')")
+    expect(file(project, 'config/app.ts')).toContain("env.string('APP_CURRENCY', 'EUR')")
+    expect(env.get('APP_LOCALE')).toBe('de')
     expect(file(project, 'config/permissions.ts')).toContain(
       '"preset": "admin-manager-member-viewer"',
     )
@@ -519,7 +551,7 @@ describe('config files follow the answers', () => {
     expect(file(project, 'config/monitoring.ts')).toContain('"exporter": "otel"')
     expect(file(project, 'config/ai.ts')).toMatch(/"provider": "ollama",\n\s+"mcpServer": true/)
     expect(file(project, 'config/ui.ts')).toMatch(
-      /appearance: "dark",[\s\S]*languages: \["en","de"\],[\s\S]*pwa: true,[\s\S]*liveUpdates: true/,
+      /appearance: 'dark',[\s\S]*languages: \['en', 'de'\],[\s\S]*pwa: true,[\s\S]*liveUpdates: true,\n\}\n$/,
     )
     expect(file(project, 'config/auth.ts')).toMatch(
       /"social": \[\n\s+"github"\n\s+\],\n\s+"enterpriseSso": true/,
@@ -547,17 +579,26 @@ describe('config files follow the answers', () => {
     )
   })
 
-  it('sample data writes its own seeder only when chosen, listed in database.seeder.ts (#104)', () => {
-    expect(paths()).toContain('database/seeders/sample-data.seeder.ts')
-    expect(paths({ sampleData: false })).not.toContain('database/seeders/sample-data.seeder.ts')
+  it("sample data runs the skeleton's user seeder only when chosen, listed in database.seeder.ts (#104)", () => {
     const main = file(files(), 'database/seeders/database.seeder.ts')
     expect(main).toMatch(
-      /\/\/ strut:seeders:start\n\s+await call\(\[AdminSeeder, SampleDataSeeder\]\)\n\s+\/\/ strut:seeders:end/,
+      /\/\/ strut:seeders:start\n\s+await call\(\[AdminSeeder, UserSeeder\]\)\n\s+\/\/ strut:seeders:end/,
     )
     expect(main).toContain("import AdminSeeder from './admin.seeder.ts'")
+    expect(main).toContain("import UserSeeder from './user.seeder.ts'")
+    expect(main).toContain("import { defineSeeder } from '@strutvane/framework/database'")
     expect(main).toContain('export default defineSeeder({')
-    const none = file(files({ auth: 'none', stack: 'api' }), 'database/seeders/database.seeder.ts')
+    // Without sample data the import goes too (the app type-checks with noUnusedLocals).
+    const noSample = file(files({ sampleData: false }), 'database/seeders/database.seeder.ts')
+    expect(noSample).toMatch(/strut:seeders:start\n\s+await call\(\[AdminSeeder\]\)/)
+    expect(noSample).not.toContain('UserSeeder')
+    const none = file(
+      files({ auth: 'none', stack: 'api', sampleData: false }),
+      'database/seeders/database.seeder.ts',
+    )
     expect(none).toMatch(/strut:seeders:start\n\s+await call\(\[\]\)/)
+    expect(none).not.toMatch(/^import .*Seeder from/m)
+    expect(paths({ auth: 'none' })).not.toContain('database/seeders/admin.seeder.ts')
   })
 
   it('teams: config/tenancy.ts is { enabled, column } and off unless teams (#90)', () => {
@@ -573,9 +614,11 @@ describe('config files follow the answers', () => {
 
   it('the database config reads mysql|mariadb|pgsql|sqlite, SQLite at database/database.sqlite, the migrations table (#14, #36, #96)', () => {
     const config = file(files(), 'config/database.ts')
-    expect(config).toContain("process.env['DB_CONNECTION'] === 'postgres' ? 'pgsql'")
-    expect(config).toContain("'database/database.sqlite'")
-    expect(config).toContain("migrations: { table: 'migrations' }")
+    expect(config).toContain(
+      "const CONNECTIONS = ['mysql', 'mariadb', 'pgsql', 'postgres', 'sqlite']",
+    )
+    expect(config).toContain("env.string('DB_DATABASE', 'database/database.sqlite')")
+    expect(config).toContain("table: 'migrations',")
     expect(parseEnv(file(files({ database: 'postgres' }), '.env')).get('DB_CONNECTION')).toBe(
       'pgsql',
     )

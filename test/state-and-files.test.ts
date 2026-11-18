@@ -263,11 +263,11 @@ describe('project names, ports and the package root', () => {
     await expect(pickFreePort(40_000, async () => false, 3)).rejects.toBeInstanceOf(NoFreePortError)
   })
 
-  it('the package root is this repo (templates/strut.js lives there)', () => {
+  it('the package root is this repo (the vendored skeleton lives there)', () => {
     expect(JSON.parse(readFileSync(join(packageRoot(), 'package.json'), 'utf8')).name).toBe(
       'create-strutvane',
     )
-    expect(readFileSync(join(packageRoot(), 'templates', 'strut.js'), 'utf8')).toMatch(
+    expect(readFileSync(join(packageRoot(), 'skeleton', 'template', 'strut.js'), 'utf8')).toMatch(
       /node strut <command>/,
     )
   })

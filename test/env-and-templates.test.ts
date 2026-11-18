@@ -19,7 +19,7 @@ import { type ProjectOptions, resolveOptions } from '../src/options.ts'
 import { isForbiddenInCommit, MUST_BE_IGNORED } from '../src/steps/git.ts'
 import { secretKeys } from '../src/templates/env.ts'
 import { renderProject } from '../src/templates/project.ts'
-import { FRAMEWORK_RANGE, VITEST } from '../src/version.ts'
+import { DRIVERS, FRAMEWORK_RANGE, VITEST } from '../src/version.ts'
 import { tempFolder } from './helpers/fakes.ts'
 
 const options = (extra: Parameters<typeof resolveOptions>[0] = {}): ProjectOptions =>
@@ -181,7 +181,8 @@ describe('generated files', () => {
       scripts: {
         dev: 'node strut dev',
         build: 'node strut build',
-        start: 'node build/server.js',
+        // INSTALLER.md §5 bug 4: the framework never writes build/server.js.
+        start: 'node strut start',
         test: 'vitest run',
         setup: 'node strut setup',
         strut: 'node strut',
@@ -207,12 +208,17 @@ describe('generated files', () => {
     expect(file(project, 'README.md')).toMatch(
       /npm run dev[\s\S]*node strut list[\s\S]*npm run setup/,
     )
+    // strut.js is the skeleton's, and executable (written with mode 0o755 on macOS and Linux).
+    expect(project.find((f) => f.path === 'strut.js')?.executable).toBe(true)
+    expect(project.filter((f) => f.executable === true).map((f) => f.path)).toEqual(['strut.js'])
   })
 
-  it('without tests there is no vitest and no test script', () => {
-    const manifest = JSON.parse(file(renderProject(options({ testing: 'none' })), 'package.json'))
+  it('without tests there is no vitest, no test script and no test files', () => {
+    const project = renderProject(options({ testing: 'none' }))
+    const manifest = JSON.parse(file(project, 'package.json'))
     expect(manifest.scripts.test).toBeUndefined()
-    expect(manifest.devDependencies).toEqual({})
+    expect(manifest.devDependencies.vitest).toBeUndefined()
+    expect(project.some((f) => f.path.startsWith('tests/'))).toBe(false)
   })
 
   it('uses the MVC layout with dot-suffix file names (decision #34)', () => {
@@ -224,8 +230,11 @@ describe('generated files', () => {
       'bootstrap/app.ts',
       'routes/web.ts',
       'routes/api.ts',
+      'app/providers/app.provider.ts',
+      'bootstrap/providers.ts',
       'config/app.ts',
-      'config/cors.ts',
+      'config/index.ts',
+      'config/logging.ts',
       'config/tenancy.ts',
       'database/migrations/0001_01_01_000000_create_users_table.ts',
       'database/seeders/database.seeder.ts',
@@ -263,6 +272,7 @@ describe('generated files', () => {
       '.strutvane/local/setup.json',
       '.strutvane/local/packages/x/package.json',
       'storage/x',
+      'storage/logs/strutvane.log',
     ]) {
       expect(isForbiddenInCommit(path), path).toBe(true)
     }
@@ -273,6 +283,9 @@ describe('generated files', () => {
       'strut.js',
       // The rest of .strutvane/ (generated types, resources, client) is committed (#10).
       '.strutvane/types/models.d.ts',
+      // The skeleton keeps each storage folder with a .gitignore (no data), like Laravel.
+      'storage/logs/.gitignore',
+      'storage/framework/cache/.gitignore',
     ]) {
       expect(isForbiddenInCommit(path), path).toBe(false)
     }
@@ -336,8 +349,9 @@ describe('Docker mode files (everything in containers, like Sail)', () => {
     expect(JSON.parse(file(project, 'strutvane.json')).answers.docker).toBe(true)
     const sqlite = renderProject(options({ database: 'sqlite' }))
     expect(JSON.parse(file(sqlite, 'strutvane.json')).answers.docker).toBe(false)
-    // The per-machine override is optional and never generated.
-    expect(project.some((f) => f.path.startsWith('.strutvane/'))).toBe(false)
+    // The per-machine override (.strutvane/local/) is optional and never generated; the rest of
+    // .strutvane/ is the skeleton's committed, generated schema and types.
+    expect(project.some((f) => f.path.startsWith('.strutvane/local/'))).toBe(false)
   })
 
   it('pins the database driver exactly; Strutvane packages use the framework range', () => {
@@ -354,12 +368,22 @@ describe('Docker mode files (everything in containers, like Sail)', () => {
     // SQLite needs no driver (node:sqlite): only the Strutvane packages the default answers bring.
     expect(
       JSON.parse(file(renderProject(options({ database: 'sqlite' })), 'package.json')).dependencies,
-    ).toEqual({
+    ).toMatchObject({
       '@strutvane/framework': FRAMEWORK_RANGE,
       '@strutvane/auth': FRAMEWORK_RANGE,
       '@strutvane/design-crisp': FRAMEWORK_RANGE,
       '@strutvane/ui': FRAMEWORK_RANGE,
     })
+    const sqliteDeps = Object.keys(
+      JSON.parse(file(renderProject(options({ database: 'sqlite' })), 'package.json')).dependencies,
+    )
+    expect(sqliteDeps.filter((name) => ['mysql2', 'pg'].includes(name))).toEqual([])
+    // The installer's driver pins and the skeleton's agree (a drift would install two versions).
+    for (const database of ['mysql', 'postgres'] as const) {
+      const deps = JSON.parse(file(renderProject(options({ database })), 'package.json'))
+        .dependencies as Record<string, string>
+      expect(deps[DRIVERS[database].name]).toBe(DRIVERS[database].version)
+    }
   })
 
   it('writes a typed database password (own server) escaped into .env only', () => {

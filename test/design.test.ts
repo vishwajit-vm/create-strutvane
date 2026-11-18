@@ -193,7 +193,10 @@ describe('generated files per design', () => {
 
       const config = file(project, 'config/ui.ts')
       expect(config).toContain(`design: '${design}',`)
-      expect(config).toContain(`node strut design:use ${other}`)
+      // From the skeleton template: names every design, so the hint never goes stale.
+      expect(config).toContain(`node strut design:use <${DESIGN_NAMES.join('|')}>`)
+      expect(config).toContain(packageName)
+      expect(other).toBeDefined()
       expect(config).toContain('resources/ui/theme.css')
       expect(config).toMatch(/^\/\/ /) // starts with the friendly comment
 
@@ -207,7 +210,7 @@ describe('generated files per design', () => {
       const readme = file(project, 'README.md')
       expect(readme).toContain(`## Design`)
       expect(readme).toContain(`**${design}** design (\`${packageName}\``)
-      expect(readme).toContain(`node strut design:use ${other}`)
+      expect(readme).toContain('node strut design:use <name>')
     },
   )
 

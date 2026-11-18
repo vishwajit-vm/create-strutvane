@@ -246,15 +246,26 @@ export function databaseSeeder(skeleton: string, options: ProjectOptions): strin
 /**
  * The first admin (INSTALLER.md §5, bugs 1 and 6): seeders come from
  * `@strutvane/framework/database`, and `SeedContext.env` is the `APP_ENV` string, so the address
- * is read from the process environment (falling back to `.env`), never from `env[...]`.
+ * is read from the process environment (falling back to `.env`), never from `env[...]`. It calls
+ * the driver-neutral `createFirstAdmin()` that @strutvane/auth is adding (decided 2026-11-18),
+ * behind a guard: until the installed auth has it, seeding skips the admin and says what to do.
  */
 const ADMIN_SEEDER = `// The first admin (SEED_ADMIN_EMAIL in .env), created once. Development only: seeding stops for
 // APP_ENV=production or staging. The password is never stored in .env: setup passes a one-time
 // password to this seeder and shows it once; it must be changed at the first sign-in.
 // Lost it? Run: node strut user:password <email>
+//
+// createFirstAdmin() is the driver-neutral helper @strutvane/auth is adding. Until the installed
+// version has it, this seeder creates nothing and says how to finish, instead of failing setup.
 import { existsSync } from 'node:fs'
-import { firstAdmin } from '@strutvane/auth'
+import * as auth from '@strutvane/auth'
 import { defineSeeder } from '@strutvane/framework/database'
+
+/** The planned @strutvane/auth helper: creates the account once, never changes an existing one. */
+type CreateFirstAdmin = (
+  db: unknown,
+  admin: { readonly name: string; readonly email: string },
+) => Promise<void>
 
 /** SEED_ADMIN_EMAIL from the environment, else from .env (seeders run in the project root). */
 function adminEmail(): string {
@@ -266,7 +277,15 @@ export default defineSeeder({
   async run({ db, env }) {
     // \`env\` is APP_ENV (local, testing, staging or production), not the environment variables.
     if (env === 'production' || env === 'staging') return
-    await firstAdmin(db).createOnce({ name: 'Admin', email: adminEmail() })
+    const createFirstAdmin: unknown = Reflect.get(auth, 'createFirstAdmin')
+    if (typeof createFirstAdmin !== 'function') {
+      process.stderr.write(
+        'No first admin was created: the installed @strutvane/auth has no createFirstAdmin() yet.\\n' +
+          'Update it (npm install @strutvane/auth@next), then run: node strut db:seed --class AdminSeeder\\n',
+      )
+      return
+    }
+    await (createFirstAdmin as CreateFirstAdmin)(db, { name: 'Admin', email: adminEmail() })
   },
 })
 `

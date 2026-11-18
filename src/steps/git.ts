@@ -57,7 +57,8 @@ export const MUST_BE_IGNORED = [
 
 /**
  * Staged paths that must never be committed: env files (except the example), installer state,
- * Docker files and volumes, SQLite data files and storage.
+ * Docker files and volumes, SQLite data files and storage. The one exception under storage/ is a
+ * `.gitignore`: the skeleton keeps each storage folder with one (like Laravel), and it holds no data.
  *
  * @example
  * isForbiddenInCommit('.env') // true
@@ -67,7 +68,8 @@ export function isForbiddenInCommit(path: string): boolean {
   const name = path.split('/').pop() ?? path
   if (name.startsWith('.env') && name !== '.env.example') return true
   if (/\.sqlite($|-)/.test(name)) return true
-  return /^(\.strutvane\/local|docker|storage|node_modules)\//.test(path)
+  if (path.startsWith('storage/')) return name !== '.gitignore'
+  return /^(\.strutvane\/local|docker|node_modules)\//.test(path)
 }
 
 /**

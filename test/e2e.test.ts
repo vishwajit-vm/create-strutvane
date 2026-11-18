@@ -130,7 +130,7 @@ describe('real end-to-end run (SQLite, no Docker)', () => {
     )
     expect(result.code, result.output).toBe(2)
     expect(result.output).toMatch(/Dependencies installed with npm/)
-    expect(result.output).toMatch(/Migrations run \(3 new, 3 total\)/)
+    expect(result.output).toMatch(/Migrations run \(1 new, 1 total\)/)
     expect(result.output).toMatch(/git config --global user.name/)
     expect(result.output).toContain('cd acme-e2e; npm run setup')
 
@@ -171,14 +171,24 @@ describe('real end-to-end run (SQLite, no Docker)', () => {
 
     const db = new DatabaseSync(join(directory, 'database', 'database.sqlite'))
     try {
+      // The first admin, through @strutvane/auth's createFirstAdmin() (the stand-in's). The
+      // must-change-password flag is auth's own column (its migrations), not the skeleton's.
       const admin = db
-        .prepare('SELECT email, must_change_password AS mustChange, password FROM users')
+        .prepare("SELECT email, password FROM users WHERE email = 'admin@acme-e2e.test'")
         .all()
       expect(admin).toHaveLength(1)
-      expect(admin[0]).toMatchObject({ email: 'admin@acme-e2e.test', mustChange: 1 })
       expect(String(admin[0]?.['password'])).toMatch(/^scrypt\$/)
+      // Sample data (the default for the admin starter): the skeleton's user seeder and factory
+      // (INSTALLER.md §5 bug 5: sequence is a number), fake users with no password.
+      const fake = db
+        .prepare("SELECT email, password FROM users WHERE email LIKE 'user%@example.test'")
+        .all()
+      expect(fake.map((row) => row['email'])).toEqual(
+        [1, 2, 3, 4, 5].map((n) => `user${n}@example.test`),
+      )
+      expect(fake.every((row) => row['password'] === null)).toBe(true)
       // Applied migrations are recorded in Laravel's table (#36).
-      expect(db.prepare('SELECT COUNT(*) AS n FROM migrations').get()).toEqual({ n: 3 })
+      expect(db.prepare('SELECT COUNT(*) AS n FROM migrations').get()).toEqual({ n: 1 })
     } finally {
       db.close()
     }
@@ -289,7 +299,8 @@ describe('real end-to-end run (SQLite, no Docker)', () => {
     expect(run(process.execPath, ['strut.js', 'help'], directory, env).output).toBe(list.output)
     const tests = run(process.execPath, [NPM, 'test'], directory, env)
     expect(tests.code, tests.output).toBe(0)
-    expect(tests.output).toMatch(/1 passed/)
+    // The skeleton's own tests: the booted app answers /up, /api/health and a 404.
+    expect(tests.output).toMatch(/Tests\s+4 passed/)
 
     const port = Number(parseEnv(readFileSync(join(directory, '.env'), 'utf8')).get('APP_PORT'))
     const dev = await started(
@@ -311,19 +322,34 @@ describe('real end-to-end run (SQLite, no Docker)', () => {
     dev.kill()
   })
 
-  // Regression (class: a build that only runs inside the source tree). The production image ships
-  // only build/, production dependencies and package.json; settings come from the environment.
-  it('the production build runs alone: only build/ + dependencies, settings from the environment', async () => {
+  // Regression (class: a production start that only works inside the source tree, and INSTALLER.md
+  // §5 bug 4: `npm start` ran build/server.js, which the framework never writes). The image ships
+  // exactly what the Dockerfile copies; settings come from the environment, never a .env.
+  it('the production start runs alone: what the Dockerfile copies, settings from the environment', async () => {
     const env = cleanEnvironment(gitConfig)
     expect(run(process.execPath, ['strut.js', 'build'], directory, env).code).toBe(0)
     const image = tempFolder('cs-image-')
-    // The local package copies come along because node_modules links to them (tests only).
-    for (const part of ['build', 'node_modules', '.strutvane/local/packages', 'package.json'])
+    // The Dockerfile's run stage, plus the local package copies node_modules links to (tests only).
+    for (const part of [
+      'node_modules',
+      'package.json',
+      'strut.js',
+      'app',
+      'bootstrap',
+      'config',
+      'database',
+      'routes',
+      'public',
+      '.strutvane',
+    ])
       cpSync(join(directory, part), join(image, part), { recursive: true, verbatimSymlinks: true })
     expect(existsSync(join(image, '.env'))).toBe(false)
+    expect(JSON.parse(readFileSync(join(image, 'package.json'), 'utf8')).scripts.start).toBe(
+      'node strut start',
+    )
     const port = 39_000 + Math.floor(Math.random() * 500)
     const server = await started(
-      spawn(process.execPath, ['build/server.js'], {
+      spawn(process.execPath, ['strut.js', 'start'], {
         cwd: image,
         env: { ...env, NODE_ENV: 'production', APP_PORT: String(port), APP_NAME: 'acme-e2e' },
         windowsHide: true,
@@ -370,7 +396,7 @@ describe('real end-to-end run (SQLite, no Docker)', () => {
     expect(result.code, result.output).toBe(0)
     expect(result.output).toMatch(/setting up from strutvane.json/)
     expect(result.output).toMatch(/Restored local files: \.env/)
-    expect(result.output).toMatch(/Migrations run \(3 new, 3 total\)/)
+    expect(result.output).toMatch(/Migrations run \(1 new, 1 total\)/)
     expect(result.output).toMatch(/already has its first commit/)
     const env2 = parseEnv(readFileSync(join(clone, '.env'), 'utf8'))
     expect(env2.get('APP_KEY')?.length).toBe(43)

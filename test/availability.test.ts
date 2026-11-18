@@ -2,11 +2,7 @@
  * Decisions #3, #58, #108 and #109: a question that brings a package is shown only when that
  * package is published (the core train always is); hidden questions keep a default that can be
  * installed; their flags are refused with the package's plan unless `--preview-catalogue`.
- * Also the generated config/cors.ts, executed for real (packaging finding 4).
  */
-import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { helpText, parseCommandLine } from '../src/args.ts'
 import { type Answers, resolveOptions } from '../src/options.ts'
@@ -18,7 +14,6 @@ import {
   unavailableReason,
 } from '../src/question-registry.ts'
 import { renderProject } from '../src/templates/project.ts'
-import { tempFolder } from './helpers/fakes.ts'
 
 /** Answers under which every question applies (sign-in, teams, a UI, AI on, git on). */
 const everythingApplies: Answers = { name: 'acme', teams: true, ai: true, git: true }
@@ -114,69 +109,14 @@ describe('questions about unreleased packages (0.2)', () => {
   })
 })
 
-describe('the generated config/cors.ts, run for real', () => {
-  const folder = tempFolder('cs-cors-')
-  const project = renderProject(resolveOptions({ name: 'acme' }, '/code'))
-  const source = project.find((f) => f.path === 'config/cors.ts')?.content ?? ''
-  const file = join(folder, 'cors.ts')
-  writeFileSync(file, source)
-  let loads = 0
-  /** Import a fresh copy with these environment values. */
-  const load = async (env: Record<string, string | undefined>) => {
-    const before = { CORS_ORIGINS: process.env['CORS_ORIGINS'], APP_ENV: process.env['APP_ENV'] }
-    for (const [key, value] of Object.entries(env)) {
-      if (value === undefined) delete process.env[key]
-      else process.env[key] = value
-    }
-    try {
-      loads += 1
-      return (await import(`${pathToFileURL(file).href}?v=${loads}`)) as {
-        default: { origins: readonly string[]; credentials: boolean }
-        parseCorsOrigins: (value: string | undefined, appEnv: string | undefined) => unknown
-      }
-    } finally {
-      for (const [key, value] of Object.entries(before)) {
-        if (value === undefined) delete process.env[key]
-        else process.env[key] = value
-      }
-    }
-  }
-
-  it('the local default from .env loads', async () => {
-    const env = project.find((f) => f.path === '.env')?.content ?? ''
-    expect(env).toMatch(/^CORS_ORIGINS=http:\/\/localhost:3000$/m)
-    const config = await load({ CORS_ORIGINS: 'http://localhost:3000', APP_ENV: 'local' })
-    expect(config.default).toEqual({ origins: ['http://localhost:3000'], credentials: true })
-  })
-
-  it('an empty or missing CORS_ORIGINS fails as a settings problem that names the key', async () => {
-    await expect(load({ CORS_ORIGINS: '', APP_ENV: 'local' })).rejects.toThrow(
-      /^CORS_ORIGINS is empty: list each origin/,
-    )
-    await expect(load({ CORS_ORIGINS: undefined, APP_ENV: 'local' })).rejects.toThrow(
-      /^CORS_ORIGINS is empty/,
-    )
-  })
-
-  it('refuses a wildcard, a non-origin, and http in production, every problem naming the key', async () => {
-    const { parseCorsOrigins } = await load({ CORS_ORIGINS: 'http://localhost:3000' })
-    expect(parseCorsOrigins('*', 'local')).toEqual({
-      issues: [
-        {
-          key: 'CORS_ORIGINS',
-          message: 'CORS_ORIGINS cannot contain * while credentials are allowed: list each origin',
-        },
-      ],
-    })
-    expect(JSON.stringify(parseCorsOrigins('https://a.example/path, nope', 'local'))).toMatch(
-      /is not an origin[\s\S]*is not an origin/,
-    )
-    expect(JSON.stringify(parseCorsOrigins('http://a.example', 'production'))).toMatch(
-      /production allows https origins only/,
-    )
-    expect(parseCorsOrigins(' https://a.example , https://b.example ', 'production')).toEqual({
-      origins: ['https://a.example', 'https://b.example'],
-    })
+describe('CORS is not generated (skeleton INSTALLER.md §4)', () => {
+  // CORS is off by default (blueprint §5.2) and v2 configures it in bootstrap/app.ts middleware,
+  // so the old process.env-reading config/cors.ts and its CORS_ORIGINS key are gone.
+  it('writes no config/cors.ts and no CORS_ORIGINS key', () => {
+    const project = renderProject(resolveOptions({ name: 'acme' }, '/code'))
+    expect(project.map((f) => f.path)).not.toContain('config/cors.ts')
+    for (const name of ['.env', '.env.example'])
+      expect(project.find((f) => f.path === name)?.content).not.toMatch(/CORS_ORIGINS/)
   })
 })
 
