@@ -140,8 +140,9 @@ docker run -p 3000:3000 --env APP_KEY=... --env DB_HOST=... ${options.name}
 \`\`\`
 
 Works on Kubernetes, Fly, Cloud Run, ECS and any container host. The \`Dockerfile\` builds in a
-separate stage, ships only \`build/\` and production dependencies, runs as the non-root \`node\`
-user and checks \`/up\`. \`.dockerignore\` keeps \`.env*\`, \`.git\`, \`node_modules\`, \`storage/\`
+separate stage, ships the app's sources (Node runs the TypeScript directly), the built UI in
+\`dist/\` and production dependencies, runs \`node strut start\` as the non-root \`node\` user and
+checks \`/up\`. \`.dockerignore\` keeps \`.env*\`, \`.git\`, \`node_modules\`, \`storage/\`
 and tests out of the image. Regenerate both files later with \`node strut docker:prod\`.
 
 ${common}
@@ -153,7 +154,7 @@ ${common}
 npm ci --ignore-scripts
 node strut build
 node strut migrate --force
-npm start            (node build/server.js)
+npm start            (node strut start)
 \`\`\`
 
 ${common}
@@ -162,7 +163,8 @@ ${common}
 
 /**
  * The production image (ADR-0021). Three stages so the final image holds only what runs:
- * no dev dependencies, no sources, no tests, no secrets, and a non-root user.
+ * no dev dependencies, no tests, no secrets, and a non-root user. The app runs from its sources
+ * with `node strut start` (framework 0.2 has no compiled server file).
  */
 function dockerfile(options: ProjectOptions): string {
   const node = `node:${CONTAINER_NODE_MAJOR}-bookworm-slim`
@@ -172,7 +174,8 @@ function dockerfile(options: ProjectOptions): string {
 # No "# syntax=" line on purpose: it would fetch an unpinned build frontend from a registry on
 # every build; nothing here needs more than the builder's own Dockerfile support.
 
-# 1. Build: install everything (dev dependencies too) and compile to build/.
+# 1. Build: install everything (dev dependencies too), check that the app loads and build the web
+#    UI into dist/ (an API-only app has none: the folder is created empty).
 FROM ${node} AS build
 WORKDIR /app
 # Inside a container: strut.js runs commands here instead of forwarding them (Docker mode).
@@ -180,7 +183,7 @@ ENV STRUTVANE_IN_CONTAINER=1
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci --ignore-scripts
 COPY . .
-RUN node strut build
+RUN node strut build && mkdir -p dist
 
 # 2. Production dependencies only.
 FROM ${node} AS deps
@@ -188,10 +191,13 @@ WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci --omit=dev --ignore-scripts
 
-# 3. Run: only build/ and production dependencies, as the image's non-root "node" user. The files
-#    stay owned by root, so the app cannot change its own code (it also runs with --read-only).
+# 3. Run: the app's sources (Node runs the TypeScript files directly, no compile step), the built
+#    UI and production dependencies, as the image's non-root "node" user. No tests, no .env. The
+#    files stay owned by root, so the app cannot change its own code (it also runs with --read-only).
 FROM ${node}
 ENV NODE_ENV=production
+# strut.js runs commands itself here instead of forwarding them to a compose stack.
+ENV STRUTVANE_IN_CONTAINER=1
 # Logs go to stderr as JSON lines, where container platforms collect them (ADR-0022, decision #7).
 ENV LOG_CHANNEL=stderr
 ENV LOG_FORMAT=json
@@ -199,13 +205,20 @@ ENV LOG_FORMAT=json
 ENV APP_HOST=0.0.0.0
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=build /app/build ./build
-COPY package.json ./
+COPY --from=build /app/package.json /app/strut.js ./
+COPY --from=build /app/app ./app
+COPY --from=build /app/bootstrap ./bootstrap
+COPY --from=build /app/config ./config
+COPY --from=build /app/database ./database
+COPY --from=build /app/routes ./routes
+COPY --from=build /app/public ./public
+COPY --from=build /app/.strutvane ./.strutvane
+COPY --from=build /app/dist ./dist
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --start-interval=2s --retries=3 \\
   CMD node -e "fetch('http://127.0.0.1:' + (process.env.APP_PORT || 3000) + '/up').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
-CMD ["node", "build/server.js"]
+CMD ["node", "strut", "start"]
 `
 }
 

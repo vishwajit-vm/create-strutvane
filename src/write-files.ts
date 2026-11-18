@@ -44,8 +44,11 @@ export function targetProblem(directory: string): string | undefined {
   return undefined
 }
 
-/** Writes one file. Injectable so tests can make the disk fail halfway. */
-export type FileWriter = (path: string, content: string) => Promise<void>
+/**
+ * Writes one file. Injectable so tests can make the disk fail halfway. `executable` asks for mode
+ * 0o755 (`strut.js`, so `./strut` works on macOS and Linux).
+ */
+export type FileWriter = (path: string, content: string, executable?: boolean) => Promise<void>
 
 /**
  * Files that may hold a secret from the moment they exist: `.env` gets a typed database password
@@ -61,12 +64,12 @@ const isSecretFile = (path: string): boolean => {
  * Secret files are created owner-only (0600) on macOS and Linux right away, not only later by the
  * secrets step; Windows ignores the mode (the user profile's ACL protects the folder there).
  */
-const diskWriter: FileWriter = async (path, content) => {
+const diskWriter: FileWriter = async (path, content, executable = false) => {
   await mkdir(dirname(path), { recursive: true })
   await writeFile(path, content, {
     encoding: 'utf8',
     flag: 'wx',
-    mode: isSecretFile(path) ? 0o600 : 0o666,
+    mode: isSecretFile(path) ? 0o600 : executable ? 0o755 : 0o666,
   }) // wx: never overwrite
 }
 
@@ -87,7 +90,8 @@ export async function writeProjectFiles(
   const existed = existsSync(directory)
   await mkdir(directory, { recursive: true })
   try {
-    for (const file of files) await write(join(directory, file.path), file.content)
+    for (const file of files)
+      await write(join(directory, file.path), file.content, file.executable === true)
   } catch (error) {
     await rollBack(directory, existed)
     throw error

@@ -6,19 +6,12 @@
 // Exit codes: 0 ok, 1 failed, 3 database unreachable (the installer offers Retry / Skip for 3).
 import { spawnSync } from 'node:child_process'
 import { randomBytes, scryptSync } from 'node:crypto'
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseEnv } from 'node:util'
+import { faker, useSeedingDatabase } from './database.js'
 import { connect, connectionSettings, DatabaseError, dialectOf, prepareDatabase } from './db.js'
 import { createSchema, sqlValue } from './index.js'
 
@@ -204,7 +197,7 @@ async function seed(root, db, env) {
       const given = process.env.STRUT_SEED_ADMIN_PASSWORD
       const password = given || readablePassword()
       await db.exec(
-        `INSERT INTO users (name, email, password, must_change_password) VALUES (${sqlValue(name)}, ${sqlValue(email)}, ${sqlValue(hashPassword(password))}, ${sqlValue(true)})`,
+        `INSERT INTO users (name, email, password) VALUES (${sqlValue(name)}, ${sqlValue(email)}, ${sqlValue(hashPassword(password))})`,
       )
       process.stdout.write(`Admin created: ${email}\n`)
       if (!given)
@@ -213,9 +206,13 @@ async function seed(root, db, env) {
         )
     },
   }
+  useSeedingDatabase(handle)
+  // The real SeedContext: env is APP_ENV (a string), not the environment variables.
   const context = {
     db: handle,
-    env,
+    env: env.APP_ENV,
+    tenantId: undefined,
+    faker,
     call: async (list) => {
       for (const definition of list) await definition.run(context)
     },
@@ -236,7 +233,7 @@ async function resetPassword(root, env, email) {
     }
     const password = readablePassword()
     await db.exec(
-      `UPDATE users SET password = ${sqlValue(hashPassword(password))}, must_change_password = ${sqlValue(true)} WHERE email = ${sqlValue(email)}`,
+      `UPDATE users SET password = ${sqlValue(hashPassword(password))} WHERE email = ${sqlValue(email)}`,
     )
     process.stdout.write(
       `New one-time password for ${email} (shown once, change it at first sign-in): ${password}\n`,
@@ -262,6 +259,8 @@ function allowedHosts(env) {
  * `docker stop` takes a moment, not its 10-second kill timeout.
  */
 async function serve(root, env, label) {
+  // The app's config() reads process.env, as the real framework's does after loading .env.
+  for (const [key, value] of Object.entries(env)) process.env[key] ??= value
   const { default: app } = await import(pathToFileURL(join(root, 'bootstrap', 'app.ts')).href)
   const port = Number(env.APP_PORT || 3000)
   const hosts = allowedHosts(env)
@@ -280,15 +279,13 @@ async function serve(root, env, label) {
       )
       return
     }
-    const { status, body } = await app.handle(
-      request.method,
-      new URL(request.url, 'http://localhost').pathname,
+    const answer = await app.handle(
+      new Request(new URL(request.url, 'http://localhost'), { method: request.method }),
     )
-    const html = typeof body === 'string'
-    response.writeHead(status, {
-      'content-type': html ? 'text/html; charset=utf-8' : 'application/json',
+    response.writeHead(answer.status, {
+      'content-type': answer.headers.get('content-type') ?? 'text/plain',
     })
-    response.end(html ? body : JSON.stringify(body))
+    response.end(request.method === 'HEAD' ? undefined : await answer.text())
   })
   await new Promise((resolve, reject) => {
     server.once('error', (error) =>
@@ -318,40 +315,21 @@ async function serve(root, env, label) {
   return 0
 }
 
-/** The app's runtime sources the production server loads (the real build bundles them). */
-const RUNTIME_FOLDERS = ['bootstrap', 'app', 'routes', 'config']
-
 /**
- * Spike only: the "production build" copies the runtime sources into build/ and writes a server
- * that serves them, so build/ (plus production dependencies) is all an image needs. The real
- * build bundles and runs `vite build`.
+ * `node strut build`: the real one checks that the app loads and runs `vite build` into dist/web.
+ * The stand-in loads bootstrap/app.ts (so a broken app fails the build) and builds nothing.
  */
-function build(root) {
-  const out = join(root, 'build')
-  rmSync(out, { recursive: true, force: true })
-  mkdirSync(out, { recursive: true })
-  for (const folder of RUNTIME_FOLDERS) {
-    if (existsSync(join(root, folder)))
-      cpSync(join(root, folder), join(out, folder), { recursive: true })
-  }
-  writeFileSync(
-    join(out, 'server.js'),
-    [
-      '// Production server (spike build): serves the sources copied next to this file.',
-      "import { fileURLToPath } from 'node:url'",
-      "const { run } = await import('@strutvane/framework/cli')",
-      "process.exitCode = await run(['serve'], { root: fileURLToPath(new URL('.', import.meta.url)) })",
-      '',
-    ].join('\n'),
-  )
-  process.stdout.write('Built build/ (start it with: npm start)\n')
+async function build(root) {
+  await import(pathToFileURL(join(root, 'bootstrap', 'app.ts')).href)
+  process.stdout.write('Project loads (stand-in: no web UI to build)\n')
   return 0
 }
 
 const HELP = `Usage: node strut <command>
 
   dev                    Start the app (API + UI) on 127.0.0.1:APP_PORT
-  build                  Build for production (then: npm start)
+  build                  Check the app loads and build the web UI (then: npm start)
+  start                  Start the app server (production)
   migrate [--seed]       Run new migrations (and the seeders)
   db:prepare             Check your own database server, create the databases (setup runs it)
   db:seed                Run the seeders (development only)
@@ -423,6 +401,7 @@ export async function run(argv, { root }) {
         return 0
       case 'dev':
         return await serve(root, env, 'development')
+      case 'start':
       case 'serve':
         return await serve(
           root,
@@ -430,7 +409,7 @@ export async function run(argv, { root }) {
           process.env.NODE_ENV === 'production' ? 'production' : 'server',
         )
       case 'build':
-        return build(root)
+        return await build(root)
       case 'test': {
         const result = spawnSync(process.execPath, ['--test', 'tests/**/*.test.ts'], {
           cwd: root,

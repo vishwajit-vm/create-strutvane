@@ -8,6 +8,8 @@
   },
   "exports": {
     ".": "./index.js",
+    "./database": "./database.js",
+    "./schema": "./schema.js",
     "./cli": "./cli.js"
   }
 }

@@ -1,25 +1,30 @@
 /**
- * The whole generated project as a list of files: package.json, `.npmrc`, `strut.js`, env files,
- * the git-ignored Docker compose file, the README, `strutvane.json` and the app sources.
+ * The whole generated project as a list of files.
+ *
+ * The app itself comes from the vendored strutvane-skeleton (`skeleton/`, rendered by
+ * `skeleton/app.ts` with the skeleton's own renderer): package.json, `.npmrc`, `.gitignore`,
+ * `strut.js`, `.env.example`, the README, bootstrap, routes, controllers, the typed config files,
+ * the users migration, model, policy, factory and seeders, the UI entry and the tests. On top of
+ * that the installer adds what only it knows (skeleton INSTALLER.md §2–§4):
+ *
+ * - `.env` (local values; secrets are filled in later by the secrets step) and the keys of its own
+ *   features in both env files;
+ * - the packages the answers bring, and local package copies (`STRUT_LOCAL_PACKAGES`);
+ * - `strutvane.json`, `AGENTS.md`, the answer-only configs and the first-admin seeder;
+ * - the git-ignored Docker compose file and the opt-in production Dockerfile / dev container;
+ * - CI, editor and deploy files.
  *
  * Pure function of the options (and, for local package folders, of what those folders hold): no
- * clock and no randomness (secrets come later), so the same answers always produce the same files
- * and tests can compare them directly.
+ * clock and no randomness, so the same answers always produce the same files.
  *
  * @module
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { catalogueRange, installerCatalogue } from '../catalogue.ts'
-import {
-  answersOf,
-  designInfo,
-  otherDesign,
-  type ProjectOptions,
-  SECRET_ANSWERS,
-} from '../options.ts'
-import { packageRoot } from '../package-root.ts'
+import { answersOf, type ProjectOptions, SECRET_ANSWERS } from '../options.ts'
 import { projectPackages } from '../question-registry.ts'
+import { renderSkeletonApp } from '../skeleton/app.ts'
 import {
   ABSORBED_PACKAGES,
   CORE_TRAIN,
@@ -27,11 +32,17 @@ import {
   FRAMEWORK_RANGE,
   type PinnedPackage,
   VERSION,
-  VITEST,
 } from '../version.ts'
-import { appFiles, type GeneratedFile } from './app-files.ts'
+import {
+  configAuth,
+  databaseSeeder,
+  type GeneratedFile,
+  installerAppFiles,
+  tenancyConfig,
+  uiConfig,
+} from './app-files.ts'
 import { dockerFiles } from './compose.ts'
-import { buildEnvSections, renderEnv, type TypedSecrets } from './env.ts'
+import { buildEnvSections, type EnvFiles, renderEnvFiles, type TypedSecrets } from './env.ts'
 import { workflowFiles } from './workflow-files.ts'
 
 /** How the files are rendered beyond the answers. */
@@ -59,32 +70,68 @@ export function renderProject(
   typed: TypedSecrets = {},
   settings: RenderSettings = {},
 ): GeneratedFile[] {
-  const sections = buildEnvSections(options, typed)
+  const skeleton = renderSkeletonApp(options, { configAuth, tenancyConfig })
+  const example = skeleton.find((file) => file.path === '.env.example')
+  const manifest = skeleton.find((file) => file.path === 'package.json')
+  if (example === undefined || manifest === undefined)
+    throw new Error(
+      'The vendored skeleton has no .env.example or package.json (npm run vendor:skeleton).',
+    )
+  const env = renderEnvFiles(example.content, buildEnvSections(options, typed))
+  const deps = appDependencies(manifest.content, options, settings)
   const files: GeneratedFile[] = [
-    { path: 'package.json', content: packageJson(options, settings) },
-    { path: '.npmrc', content: NPMRC },
-    { path: 'strut.js', content: strutJs() },
-    { path: '.env', content: renderEnv(sections, { example: false }) },
-    { path: '.env.example', content: renderEnv(sections, { example: true }) },
-    { path: '.gitignore', content: GITIGNORE },
-    { path: 'README.md', content: readme(options) },
+    ...skeleton.map((file) => finishSkeletonFile(file, options, env, deps)),
+    { path: '.env', content: env.env },
     // Every answer (never a secret), so `node strut install:<name>` later knows what was picked,
     // and a fresh clone can be set up from this file alone (decision #9).
     { path: 'strutvane.json', content: strutvaneJson(options) },
     ...(options.agents ? [{ path: 'AGENTS.md', content: agents(options) }] : []),
-    ...appFiles(options),
+    ...installerAppFiles(options),
     ...workflowFiles(options),
     ...dockerFiles(options),
     ...(settings.localPackages === undefined
       ? []
-      : localPackageFiles(settings.localPackages, packagesFor(options))),
+      : localPackageFiles(
+          settings.localPackages,
+          Object.keys(deps).filter((name) => name.startsWith('@strutvane/')),
+        )),
   ]
+  const seen = new Set<string>()
+  for (const file of files) {
+    // Two writers for one path would mean an answer silently lost: stop instead.
+    if (seen.has(file.path)) throw new Error(`${file.path} would be written twice`)
+    seen.add(file.path)
+  }
   return files.sort((a, b) => a.path.localeCompare(b.path))
 }
 
-/** The project's `strut.js`, shipped as a plain file in the package's `templates/` folder. */
-export function strutJs(): string {
-  return readFileSync(join(packageRoot(), 'templates', 'strut.js'), 'utf8')
+/**
+ * The installer's changes to one skeleton file: the env example with the installer's keys, the
+ * dependencies the answers bring, the README sections of installer-only features, the UI
+ * answers, the seeder list and `strut.js`'s executable bit. Every other file is the skeleton's.
+ */
+function finishSkeletonFile(
+  file: GeneratedFile,
+  options: ProjectOptions,
+  env: EnvFiles,
+  deps: Readonly<Record<string, string>>,
+): GeneratedFile {
+  switch (file.path) {
+    case '.env.example':
+      return { path: file.path, content: env.example }
+    case 'package.json':
+      return { path: file.path, content: packageJson(file.content, deps) }
+    case 'README.md':
+      return { path: file.path, content: readme(file.content, options) }
+    case 'config/ui.ts':
+      return { path: file.path, content: uiConfig(file.content, options) }
+    case 'database/seeders/database.seeder.ts':
+      return { path: file.path, content: databaseSeeder(file.content, options) }
+    case 'strut.js':
+      return { ...file, executable: true }
+    default:
+      return file
+  }
 }
 
 /**
@@ -147,19 +194,13 @@ function rangeOf(name: string, options: ProjectOptions): string {
  * @example
  * dependencies(options)['@strutvane/framework'] // '^0.2.0-next.0'
  */
-export function dependencies(
-  options: ProjectOptions,
-  settings: RenderSettings = {},
-): Record<string, string> {
+export function dependencies(options: ProjectOptions): Record<string, string> {
   const result: Record<string, string> = {}
   for (const name of packagesFor(options)) {
     if (ABSORBED_PACKAGES.includes(name)) {
       throw new Error(`${name} was merged into @strutvane/framework and must never be installed`)
     }
-    result[name] =
-      settings.localPackages === undefined
-        ? rangeOf(name, options)
-        : `file:./${LOCAL_PACKAGES_FOLDER}/${packageFolder(name)}`
+    result[name] = rangeOf(name, options)
   }
   const driver = driverDependency(options)
   if (driver !== undefined) result[driver.name] = driver.version
@@ -216,82 +257,36 @@ function strutvaneJson(options: ProjectOptions): string {
 }
 
 /**
- * The npm guards every generated app gets (integration finding L5; the same guards the Strutvane
- * repos use). npm >= 11.19 understands them; `devEngines` in package.json makes an older npm stop
- * instead of silently ignoring them.
+ * The app's dependencies: the skeleton's (the UI stack, the driver, the core train for the
+ * answers) plus every package the answers bring ({@link dependencies}, which wins on a clash).
+ * With local package folders every `@strutvane/*` dependency points at its copy, so nothing
+ * Strutvane comes from the registry. Never an absorbed package (fail closed).
  */
-export const NPMRC = `# npm supply-chain guards (written by create-strutvane; npm >= 11.19). Keep them.
-#
-# Dependency install scripts never run on install. A package that really needs one is listed in
-# package.json "allowScripts" ("name@version": true) and \`npm run setup\` rebuilds just those.
-ignore-scripts=true
-# If scripts are ever switched on, only the allowScripts list may run; anything else fails.
-strict-allow-scripts=true
-# Third-party versions must be at least a day old: most malicious releases are caught and pulled
-# within hours. Strutvane's own releases are staged and approved with 2FA, so they are exempt.
-min-release-age=1
-min-release-age-exclude[]=@strutvane/*
-# No dependencies straight from git (they skip the registry's integrity checks).
-allow-git=none
-# The Node version in package.json "engines" is enforced.
-engine-strict=true
-`
-
-/** package.json with the scripts from the design: everything goes through `node strut`. */
-function packageJson(options: ProjectOptions, settings: RenderSettings): string {
-  const scripts: Record<string, string> = {
-    dev: 'node strut dev',
-    build: 'node strut build',
-    start: 'node build/server.js',
+function appDependencies(
+  manifest: string,
+  options: ProjectOptions,
+  settings: RenderSettings,
+): Record<string, string> {
+  const parsed = JSON.parse(manifest) as { dependencies?: Record<string, string> }
+  const merged: Record<string, string> = { ...parsed.dependencies, ...dependencies(options) }
+  for (const name of Object.keys(merged)) {
+    if (ABSORBED_PACKAGES.includes(name))
+      throw new Error(`${name} was merged into @strutvane/framework and must never be installed`)
+    if (settings.localPackages !== undefined && name.startsWith('@strutvane/'))
+      merged[name] = `file:./${LOCAL_PACKAGES_FOLDER}/${packageFolder(name)}`
   }
-  if (options.testing !== 'none') scripts['test'] = 'vitest run'
-  // strut.js runs setup itself (no dependencies needed), so a fresh clone works too.
-  scripts['setup'] = 'node strut setup'
-  scripts['strut'] = 'node strut'
-  const devDependencies: Record<string, string> =
-    options.testing === 'none' ? {} : { [VITEST.name]: VITEST.version }
-  const manifest = {
-    name: options.name,
-    version: '0.1.0',
-    private: true,
-    type: 'module',
-    engines: { node: '>=24.3' },
-    // npm older than 11.19 ignores the .npmrc guards without a word: stop it instead.
-    devEngines: { packageManager: { name: 'npm', version: '>=11.19.0', onFail: 'error' } },
-    scripts,
-    dependencies: dependencies(options, settings),
-    devDependencies,
-    // The only dependencies whose install scripts may run ("name@version": true); setup rebuilds
-    // them after the script-free install. Empty: nothing the app needs has one.
-    allowScripts: {},
-  }
-  return `${JSON.stringify(manifest, null, 2)}\n`
+  return Object.fromEntries(Object.entries(merged).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
 }
 
 /**
- * The generated `.gitignore`. The setup's git step checks with `git check-ignore` that the
- * secret and local-data paths are really ignored before the first commit (security review F-17).
+ * The skeleton's package.json (scripts, engines, devEngines, devDependencies) with the
+ * dependencies replaced by {@link appDependencies}. `start` stays the skeleton's
+ * `node strut start` (INSTALLER.md §5, bug 4: the framework never writes build/server.js).
  */
-const GITIGNORE = `node_modules/
-build/
-
-# Secrets and machine-local settings (every .env file except the example)
-.env*
-!.env.example
-
-# Local Sail-style Docker services (ADR-0006: git-ignored). A production Dockerfile or a
-# .devcontainer/ is different: committed when you choose it (ADR-0021).
-docker/
-
-# Local data (SQLite -wal/-shm/-journal files hold data too)
-database/*.sqlite*
-storage/
-
-# Machine-local Strutvane state: setup progress, logs, per-computer overrides. The rest of
-# .strutvane/ (generated types, resources, the API client) is committed, so a fresh clone
-# type-checks (decision #10).
-.strutvane/local/
-`
+function packageJson(manifest: string, deps: Readonly<Record<string, string>>): string {
+  const parsed = JSON.parse(manifest) as Record<string, unknown>
+  return `${JSON.stringify({ ...parsed, dependencies: deps }, null, 2)}\n`
+}
 
 /** AGENTS.md: the short playbook AI coding agents read first. */
 function agents(options: ProjectOptions): string {
@@ -308,14 +303,20 @@ This is a Strutvane app (TypeScript, MVC, npm only). Read this before changing c
 - Controllers: \`app/http/controllers\`. Models: \`app/models\`. Policies: \`app/policies\` (\`user.policy.ts\`; deny by default).
 - Factories and seeders: \`database/factories\` (\`user.factory.ts\`) and \`database/seeders\`; \`database.seeder.ts\` lists them between the \`strut:seeders\` markers.
 - Routes: \`routes/web.ts\` (pages) and \`routes/api.ts\` (served under /api). Health check: \`GET /up\`.
-- Settings come from \`.env\` (never commit it). \`.env.example\` lists every key without secrets.
+- Settings: \`config/*.ts\` use \`defineConfig((env) => ...)\` and are listed in \`config/index.ts\`; values come from \`.env\` (never commit it). \`.env.example\` lists every key without secrets.
+- Imports: models, factories and seeders from \`@strutvane/framework/database\`; migrations only from \`@strutvane/framework/schema\`.
+- Logging: channels from \`LOG_CHANNEL\`, \`LOG_STACK\` and \`LOG_LEVEL\` in \`.env\` (\`config/logging.ts\`), files in \`storage/logs\`. Never log with \`console.*\`, never log secrets.
 - ${options.docker ? 'Docker mode: every `node strut` command runs inside the app container (`node strut services:up` / `services:down`).' : 'Runs on this computer (no Docker).'} Database: ${options.database}.
 - ${tests}
 `
 }
 
-/** The README: the three commands a user needs, first. */
-function readme(options: ProjectOptions): string {
+/**
+ * The skeleton's README plus the sections of installer-only features: Docker mode, sign-in (the
+ * first admin) and the deploy / container files. Appended, so the skeleton's text stays as the
+ * skeleton repo wrote it.
+ */
+function readme(skeleton: string, options: ProjectOptions): string {
   const docker = options.docker
     ? [
         '',
@@ -323,7 +324,7 @@ function readme(options: ProjectOptions): string {
         '',
         'Everything runs in containers (like Laravel Sail): the app on node:24, the database and Mailpit',
         '(inbox: http://localhost:8025). `node strut <command>` on your computer runs the command inside the',
-        'app container, so the three commands above work the same: `npm run dev`, `migrate` and every other',
+        'app container, so the commands above work the same: `npm run dev`, `migrate` and every other',
         'command run in the container. Your computer only needs Node to run the small `strut.js` forwarder.',
         '',
         '```text',
@@ -336,29 +337,11 @@ function readme(options: ProjectOptions): string {
         'Arguments are passed as they are (no shell in between) and the exit code comes back to you.',
         '`docker/compose.yaml` is local only and git-ignored (ADR-0006). `services:down --volumes` deletes',
         'the database, so it asks first. On Windows, keep the project inside WSL2 for fast file watching.',
-        '',
       ].join('\n')
     : ''
-  return `# ${options.name}
-
-A Strutvane app.
-
-## The three commands you need
-
-\`\`\`text
-npm run dev        start the app on http://localhost:3000 (port from .env)
-node strut list    every project command (make:model, migrate, db:seed, ...)
-npm run setup      after git clone, or to finish a setup that stopped
-\`\`\`
-${docker}
-## Where things are
-
-- \`app/\`: controllers (\`app/http/controllers\`), models, policies
-- \`routes/web.ts\`, \`routes/api.ts\`: routes (the API is served under \`/api\`; \`GET /up\` is the health check)
-- \`database/\`: migrations, seeders, factories
-- \`config/\`: settings (values come from \`.env\`)
-${options.ui !== undefined ? '- `resources/ui/`: the React UI\n' : ''}- \`strutvane.json\`: what you picked in the installer (read by \`node strut install:<name>\` and \`npm run setup\`)
-${signInSection(options)}${designSection(options)}${deploySection(options)}`
+  const base = skeleton.endsWith('\n') ? skeleton : `${skeleton}\n`
+  const dockerPart = docker === '' ? '' : `${docker}\n`
+  return `${base}${dockerPart}${signInSection(options)}${deploySection(options)}`
 }
 
 /** How sign-in works in this app, in one or two sentences. */
@@ -392,20 +375,4 @@ function deploySection(options: ProjectOptions): string {
       '- `.devcontainer/`: open the project in Codespaces or VS Code Dev Containers (ADR-0021).',
     )
   return lines.length === 0 ? '' : `\n## Deploy and containers\n\n${lines.join('\n')}\n`
-}
-
-/** The README's "Design" section: which design is installed, how to restyle it, how to switch. */
-function designSection(options: ProjectOptions): string {
-  if (options.design === undefined) return ''
-  const other = otherDesign(options.design)
-  const switchLine =
-    other === undefined
-      ? ''
-      : `\nTo switch design later: \`node strut design:use ${other}\` (it swaps the package and updates\n\`config/ui.ts\`; your \`resources/ui/theme.css\` stays as it is).\n`
-  return `
-## Design
-
-The React UI uses the **${options.design}** design (\`${designInfo(options.design).packageName}\`, set in
-\`config/ui.ts\`). Your own brand colour, font and corner radius go in \`resources/ui/theme.css\`.
-${switchLine}`
 }

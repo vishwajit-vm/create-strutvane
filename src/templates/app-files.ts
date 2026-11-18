@@ -1,29 +1,30 @@
 /**
- * The generated app's source files, in the Laravel-style MVC layout of the v2 blueprint (§3.1):
- * `app/http/controllers`, `app/models`, `app/policies`, `bootstrap/app.ts`, `routes/`, `config/`,
- * `database/{migrations,seeders,factories}`, `resources/ui`, `tests/`.
+ * The app files the installer still writes itself, on top of the vendored strutvane-skeleton
+ * (skeleton INSTALLER.md §4). The skeleton owns the app layout (bootstrap, routes, controllers,
+ * the typed `defineConfig` files, the users table, model, policy, factory and seeders, the UI
+ * entry); this module only has what depends on installer answers the skeleton does not know:
  *
- * File names follow decision #34: models stay plain (`app/models/user.ts`), every other kind of
- * file takes a dot suffix (`user.policy.ts`, `user.factory.ts`, `database.seeder.ts`,
- * `health.controller.ts`). The code follows the framework's documented shapes: the fluent
- * `Application.configure()` bootstrap (#46), `Model('users', { fillable })` (#59),
- * `defineSeeder` (#88) with the `strut:seeders` markers (#104), `defineFactory` (#89), route files
- * that export a `(router) => {}` callback, and Vitest tests (#76).
+ * - the two `answers`-mode files the skeleton names: `config/auth.ts` ({@link configAuth}) and
+ *   `config/tenancy.ts` ({@link tenancyConfig});
+ * - the answer-only configs (`config/api.ts`, `mail.ts`, `security.ts`, `monitoring.ts`,
+ *   `permissions.ts`, `ai.ts`): plain data for packages that are not built yet;
+ * - the first-admin seeder (until `node strut install:auth` writes it) and its place in
+ *   `database.seeder.ts`;
+ * - the answers of `config/ui.ts` that the skeleton's template does not take yet;
+ * - the browser test of the "Vitest + Playwright" answer.
+ *
+ * Every function is pure: same options, same text.
  *
  * @module
  */
-import {
-  DESIGN_NAMES,
-  designInfo,
-  otherDesign,
-  type ProjectOptions,
-  type RoleSet,
-} from '../options.ts'
+import type { ProjectOptions, RoleSet } from '../options.ts'
 
 /** A generated file: POSIX path relative to the project root, and its text. */
 export interface GeneratedFile {
   readonly path: string
   readonly content: string
+  /** Written with mode 0o755 on macOS and Linux (`strut.js`). */
+  readonly executable?: boolean
 }
 
 /** The roles each starting-role preset creates (decision #27). */
@@ -32,79 +33,19 @@ export const ROLE_PRESETS: Readonly<Record<RoleSet, readonly string[]>> = Object
   'admin-manager-member-viewer': Object.freeze(['admin', 'manager', 'member', 'viewer']),
 })
 
-/** The table the migrator records applied migrations in (decision #36, Laravel's name). */
-export const MIGRATIONS_TABLE = 'migrations'
-
-/** The SQLite database file (decision #96, Laravel's place). */
-export const SQLITE_FILE = 'database/database.sqlite'
-
 /**
- * Every app source file for these options.
+ * The installer-only app files for these options (the skeleton's files come separately).
  *
  * @example
- * appFiles(options).map((f) => f.path) // ['bootstrap/app.ts', 'routes/web.ts', ...]
+ * installerAppFiles(options).map((f) => f.path) // ['config/api.ts', 'config/mail.ts', ...]
  */
-export function appFiles(options: ProjectOptions): GeneratedFile[] {
-  const signIn = options.auth !== 'none'
-  const files: GeneratedFile[] = [
-    { path: 'bootstrap/app.ts', content: BOOTSTRAP },
-    { path: 'routes/web.ts', content: webRoutes(options) },
-    { path: 'routes/api.ts', content: API_ROUTES },
-    { path: 'app/http/controllers/health.controller.ts', content: HEALTH_CONTROLLER },
-    { path: 'config/app.ts', content: configApp(options) },
-    { path: 'config/database.ts', content: CONFIG_DATABASE },
-    { path: 'config/cors.ts', content: CONFIG_CORS },
-    { path: 'config/tenancy.ts', content: tenancyConfig(options) },
-    ...answerConfigFiles(options),
-    ...migrations(options),
-    ...seeders(options),
-  ]
-  // Email-link sign-in has users too; only "no sign-in" has none (and no auth package, #107).
-  if (signIn) {
-    files.push(
-      { path: 'app/models/user.ts', content: USER_MODEL },
-      { path: 'app/policies/user.policy.ts', content: USER_POLICY },
-      { path: 'config/auth.ts', content: configAuth(options) },
-      { path: 'database/factories/user.factory.ts', content: USER_FACTORY },
-    )
-  }
-  if (options.ui !== undefined) files.push(...uiFiles(options))
-  if (options.testing !== 'none')
-    files.push({ path: 'tests/feature/health.test.ts', content: HEALTH_TEST })
-  if (options.testing === 'vitest-playwright') {
+export function installerAppFiles(options: ProjectOptions): GeneratedFile[] {
+  const files: GeneratedFile[] = [...answerConfigFiles(options)]
+  if (options.auth !== 'none')
+    files.push({ path: 'database/seeders/admin.seeder.ts', content: ADMIN_SEEDER })
+  if (options.testing === 'vitest-playwright')
     files.push({ path: 'tests/browser/home.spec.ts', content: BROWSER_TEST })
-  }
   return files
-}
-
-const BOOTSTRAP = `// Builds the application (Laravel's bootstrap/app.php): routes, middleware and error handling
-// are registered here. \`node strut dev\` and the production server both start from this file.
-// The health route /up is built in: it answers {"status":"ok"} to GET and HEAD, also during
-// maintenance, so hosts, load balancers and the Dockerfile's HEALTHCHECK can call it.
-import { join } from 'node:path'
-import { Application } from '@strutvane/framework'
-import api from '../routes/api.ts'
-import web from '../routes/web.ts'
-
-export default Application.configure({ basePath: join(import.meta.dirname, '..') })
-  .withRouting({ web, api, health: '/up' })
-  .withMiddleware(() => {})
-  .withExceptions(() => {})
-  .create()
-`
-
-function webRoutes(options: ProjectOptions): string {
-  const page =
-    options.ui === undefined
-      ? `'<h1>${options.name}</h1><p>API only. Try <a href="/api/health">/api/health</a>.</p>'`
-      : `'<h1>${options.name}</h1><p>The React UI (resources/ui) is served here by Vite in development.</p>'`
-  return `// Browser routes. The React UI is mounted here in development (Vite middleware) and production.
-import type { Router } from '@strutvane/framework'
-
-export default (router: Router): void => {
-  router.get('/', () => ${page})
-}
-`
 }
 
 /**
@@ -120,8 +61,14 @@ function dataConfig(
 }
 
 /**
- * The config files that record installer answers (the packages they name read them). One small
- * file per concern, like Laravel's config folder.
+ * The config files that record installer answers for packages that are not built yet (the
+ * packages read them when they arrive). Plain data, like `config/auth.ts` and
+ * `config/tenancy.ts`: they are not `defineConfig` files and not in `config/index.ts`, so they
+ * never read `process.env` and never take part in the boot-time validation.
+ *
+ * Cache, sessions and file storage are not here (INSTALLER.md §5, bug 7): the skeleton's typed
+ * `config/cache.ts`, `session.ts` and `filesystems.ts` read `CACHE_STORE`, `SESSION_DRIVER` and
+ * `FILESYSTEM_DISK` from `.env` (see `templates/env.ts`).
  */
 function answerConfigFiles(options: ProjectOptions): GeneratedFile[] {
   const files = [
@@ -135,16 +82,6 @@ function answerConfigFiles(options: ProjectOptions): GeneratedFile[] {
         access: options.apiAccess,
         publicRoutes: ['/api/health'],
       },
-    ),
-    dataConfig(
-      'config/cache.ts',
-      '// Cache, queue and sessions. "database" needs no extra service; "redis" needs REDIS_URL in .env.',
-      { store: options.cache, queue: options.cache, sessions: options.cache },
-    ),
-    dataConfig(
-      'config/filesystems.ts',
-      '// Where uploaded files go. "s3" reads its bucket and keys from .env (never from this file).',
-      { default: options.storage },
     ),
     dataConfig(
       'config/mail.ts',
@@ -193,119 +130,16 @@ function answerConfigFiles(options: ProjectOptions): GeneratedFile[] {
   return files
 }
 
-const API_ROUTES = `// API routes, served under /api (versioning such as /api/v1 is opt-in with Route.prefix).
-// The CRUD routes for your models are registered in routes/resources.gen.ts by node strut migrate.
-import type { Router } from '@strutvane/framework'
-import { HealthController } from '../app/http/controllers/health.controller.ts'
-
-export default (router: Router): void => {
-  router.get('/health', HealthController.show)
-}
-`
-
-const HEALTH_CONTROLLER = `// A tiny controller: GET /api/health answers whether the API is up. (GET /up, the built-in
-// health route, is what hosts and load balancers call.)
-export const HealthController = {
-  show(): { status: string } {
-    return { status: 'ok' }
-  },
-}
-`
-
-/** Application settings: per-machine values from .env, the regional defaults from the installer. */
-function configApp(options: ProjectOptions): string {
-  return `// Application settings. Per-machine values come from .env; change the regional defaults here.
-export default {
-  name: process.env['APP_NAME'] ?? 'app',
-  env: process.env['APP_ENV'] ?? 'production',
-  url: process.env['APP_URL'] ?? 'http://localhost:3000',
-  debug: process.env['APP_DEBUG'] === 'true',
-  locale: ${JSON.stringify(options.locale)},
-  timezone: ${JSON.stringify(options.timezone)},
-  currency: ${JSON.stringify(options.currency)},
-}
-`
-}
-
-const CONFIG_DATABASE = `// Database settings, read from .env. DB_CONNECTION is mysql, mariadb, pgsql or sqlite
-// (postgres is accepted as pgsql). DB_URL, when set, wins over the separate keys.
-const connection = process.env['DB_CONNECTION'] === 'postgres' ? 'pgsql' : process.env['DB_CONNECTION']
-
-export default {
-  connection: connection ?? 'sqlite',
-  url: process.env['DB_URL'] ?? '',
-  host: process.env['DB_HOST'] ?? '127.0.0.1',
-  port: Number(process.env['DB_PORT'] ?? 0) || undefined,
-  database: process.env['DB_DATABASE'] ?? '${SQLITE_FILE}',
-  username: process.env['DB_USERNAME'] ?? '',
-  password: process.env['DB_PASSWORD'] ?? '',
-  socket: process.env['DB_SOCKET'] ?? '',
-  sslMode: process.env['DB_SSLMODE'] ?? 'prefer',
-  sslCa: process.env['DB_SSL_CA'] ?? '',
-  // Applied migrations are recorded here (Laravel's name).
-  migrations: { table: '${MIGRATIONS_TABLE}' },
-}
-`
-
 /**
- * CORS: which other sites may call the API with cookies. Checked when the config loads, and every
- * problem names the key, so a bad .env reads as a normal settings error, never a crash (packaging
- * finding 4: an empty CORS_ORIGINS used to fail with an unrelated message).
+ * `config/auth.ts` (the skeleton's `configAuth` generator). Sign-in settings (decision #26): the
+ * features live here, written from the installer's answers, never in `AUTH_*` keys. The names
+ * are the one list of decisions #25 and #107; every optional feature is stated explicitly (#28).
+ * Plain data, so the file loads without the auth package.
+ *
+ * @example
+ * configAuth(options) // "// Sign-in features ...\nexport default { features: { password: true, ..."
  */
-const CONFIG_CORS = `// CORS: the other sites (origins) that may call this app's API with cookies, from CORS_ORIGINS
-// in .env as a comma list, e.g. https://admin.example.com,https://app.example.com.
-// Credentials are allowed, so a wildcard is never accepted, and production needs https.
-export interface CorsIssue {
-  readonly key: 'CORS_ORIGINS'
-  readonly message: string
-}
-
-/** Parse CORS_ORIGINS. Returns the origins, or every problem (each names the key). */
-export function parseCorsOrigins(
-  value: string | undefined,
-  appEnv: string | undefined,
-): { readonly origins: readonly string[] } | { readonly issues: readonly CorsIssue[] } {
-  const issue = (message: string): CorsIssue => ({ key: 'CORS_ORIGINS', message: \`CORS_ORIGINS \${message}\` })
-  const list = (value ?? '').split(',').map((part) => part.trim()).filter((part) => part !== '')
-  if (list.length === 0) {
-    return { issues: [issue('is empty: list each origin that may call the API, e.g. http://localhost:3000')] }
-  }
-  const issues: CorsIssue[] = []
-  for (const origin of list) {
-    if (origin.includes('*')) {
-      issues.push(issue('cannot contain * while credentials are allowed: list each origin'))
-      continue
-    }
-    let url: URL | undefined
-    try {
-      url = new URL(origin)
-    } catch {
-      url = undefined
-    }
-    if (url === undefined || !['http:', 'https:'].includes(url.protocol) || url.origin !== origin) {
-      issues.push(issue(\`has "\${origin}", which is not an origin (scheme://host[:port], no path)\`))
-    } else if (appEnv === 'production' && url.protocol !== 'https:') {
-      issues.push(issue(\`has "\${origin}": production allows https origins only\`))
-    }
-  }
-  return issues.length > 0 ? { issues } : { origins: list }
-}
-
-const parsed = parseCorsOrigins(process.env['CORS_ORIGINS'], process.env['APP_ENV'])
-if ('issues' in parsed) throw new Error(parsed.issues.map((problem) => problem.message).join('\\n'))
-
-export default {
-  origins: parsed.origins,
-  credentials: true,
-}
-`
-
-/**
- * Sign-in settings (decision #26): the features live here, written from the installer's answers,
- * never in \`AUTH_*\` keys. The names are the one list of decisions #25 and #107; the library
- * defaults every optional feature to off, so this file states each one explicitly (#28).
- */
-function configAuth(options: ProjectOptions): string {
+export function configAuth(options: ProjectOptions): string {
   const has = (feature: string): boolean => options.security.some((picked) => picked === feature)
   const password = options.auth === 'email'
   const features = {
@@ -326,8 +160,9 @@ function configAuth(options: ProjectOptions): string {
     options.auth === 'magic-link'
       ? '// Email link only: single-use links, valid 15 minutes, bound to the browser that asked.\n'
       : ''
-  return `// Sign-in features, chosen in the installer. Change them here (not in .env). APP_KEY in .env is
-// the one root secret: every signing and encryption key is derived from it.
+  return `// Sign-in features, read by @strutvane/auth and chosen in the installer. Change them here, not in
+// .env: APP_KEY is the one root secret, and every signing and encryption key is derived from it.
+// Plain data on purpose, so the file loads without the auth package.
 ${mode}export default ${JSON.stringify(
     {
       features,
@@ -341,8 +176,14 @@ ${mode}export default ${JSON.stringify(
 `
 }
 
-/** Teams (decision #90): \`{ enabled, column }\`; off unless the teams answer was yes. */
-function tenancyConfig(options: ProjectOptions): string {
+/**
+ * `config/tenancy.ts` (the skeleton's `tenancyConfig` generator). Teams (decision #90):
+ * `{ enabled, column }`, off unless the teams answer was yes, plus how a request picks its team.
+ *
+ * @example
+ * tenancyConfig(options) // "// Teams: ...\nexport default { enabled: false, column: 'tenant_id' }"
+ */
+export function tenancyConfig(options: ProjectOptions): string {
   const how = !options.teams
     ? 'Teams are off. Turn them on later with node strut install:teams.'
     : options.database === 'postgres'
@@ -351,304 +192,128 @@ function tenancyConfig(options: ProjectOptions): string {
   const data: Record<string, unknown> = { enabled: options.teams, column: 'tenant_id' }
   if (options.tenantResolver !== undefined) data['resolver'] = options.tenantResolver
   return `// Teams: each customer company sees only its own data. ${how}
+// \`node strut migrate\` and \`db:seed\` read this file directly, so keep it plain data.
 // "resolver": how a request picks its team (the in-app team switcher, or the subdomain).
 export default ${JSON.stringify(data, null, 2)}
 `
 }
 
-const USER_MODEL = `// The User model. Columns come from the users migration (database/migrations).
-import { Model } from '@strutvane/framework'
-
-export class User extends Model('users', {
-  fillable: ['name', 'email'],
-  hidden: ['password', 'two_factor_secret'],
-}) {}
-`
-
-const USER_POLICY = `// Who may do what with users. Deny by default: anything not allowed here is refused.
-// Found by name: the User model uses app/policies/user.policy.ts.
-import type { User } from '../models/user.ts'
-
-export default class UserPolicy {
-  view(actor: User, user: User): boolean {
-    return actor.id === user.id
-  }
-}
-`
-
-const USER_FACTORY = `// Fake users for tests and seeders: User.factory().count(10).create()
-import { defineFactory } from '@strutvane/framework'
-import { User } from '../../app/models/user.ts'
-
-export default defineFactory(User, ({ faker, sequence }) => ({
-  name: faker.person.fullName(),
-  email: sequence((n) => \`user\${n}@example.test\`),
-}))
-`
-
-/** Migrations, named like Laravel's (\`0001_01_01_000000_create_users_table\`). */
-function migrations(options: ProjectOptions): GeneratedFile[] {
-  const files: GeneratedFile[] = []
-  const add = (index: number, table: string, body: string) =>
-    files.push({
-      path: `database/migrations/0001_01_01_00000${index}_create_${table}_table.ts`,
-      content: `import { migration } from '@strutvane/framework'
-
-export default migration({
-  up(schema) {
-${body}
-  },
-  down(schema) {
-    schema.dropIfExists('${table}')
-  },
-})
-`,
-    })
-  if (options.auth !== 'none') {
-    const twoFactor = options.security.includes('2fa')
-      ? "\n      t.text('two_factor_secret').nullable()"
-      : ''
-    // Email-link sign-in has no passwords; the column stays (nullable) so switching later is one setting.
-    const passwordColumn =
-      options.auth === 'magic-link' ? "t.string('password').nullable()" : "t.string('password')"
-    add(
-      0,
-      'users',
-      `    schema.create('users', (t) => {
-      t.id()
-      t.string('name')
-      t.string('email').unique()
-      t.timestamp('email_verified_at').nullable()
-      ${passwordColumn}
-      t.boolean('must_change_password').default(false)${twoFactor}
-      t.timestamps()
-    })`,
-    )
-    add(
-      1,
-      'sessions',
-      `    schema.create('sessions', (t) => {
-      t.string('id', 128).primary()
-      t.foreignId('user_id').nullable().constrained('users').cascadeOnDelete()
-      t.string('ip_address', 45).nullable()
-      t.timestamp('last_activity').nullable()
-    })`,
-    )
-  }
-  add(
-    2,
-    'cache',
-    `    schema.create('cache', (t) => {
-      t.string('cache_key').primary() // "key" is a reserved word in MySQL
-      t.text('value')
-      t.integer('expiration')
-    })`,
-  )
-  if (options.teams) {
-    add(
-      3,
-      'teams',
-      `    schema.create('teams', (t) => {
-      t.id()
-      t.string('name')
-      t.timestamps()
-    })
-    schema.create('team_user', (t) => {
-      t.foreignId('team_id').constrained('teams').cascadeOnDelete()
-      t.foreignId('user_id').constrained('users').cascadeOnDelete()
-      t.string('role', 50)
-    })`,
-    )
-  }
-  return files
-}
-
-/** One seeder of the app: its file, its class-like name and its source. */
-interface SeederFile {
-  readonly file: string
+/** One entry of `database.seeder.ts`'s call list: the class name and its file (no extension). */
+interface SeederEntry {
   readonly name: string
-  readonly content: string
+  readonly file: string
+}
+
+const SEEDERS_START = '    // strut:seeders:start'
+const SEEDERS_END = '    // strut:seeders:end'
+
+/**
+ * `database.seeder.ts` with the call list between the `strut:seeders` markers set for these
+ * options (decision #104; `node strut make:migration --seeder` keeps that list later): the first
+ * admin (with sign-in), then the skeleton's sample users (when sample data was chosen). The
+ * imports follow the list, so the app type-checks with `noUnusedLocals`.
+ *
+ * Fails closed when the skeleton's file no longer has the markers or the import it starts from:
+ * the vendoring check pins the file, so this only happens with a newer skeleton.
+ *
+ * @example
+ * databaseSeeder(skeletonText, options)
+ */
+export function databaseSeeder(skeleton: string, options: ProjectOptions): string {
+  const list: SeederEntry[] = []
+  if (options.auth !== 'none') list.push({ name: 'AdminSeeder', file: 'admin' })
+  if (options.sampleData) list.push({ name: 'UserSeeder', file: 'user' })
+  const lines = skeleton.split('\n')
+  const start = lines.indexOf(SEEDERS_START)
+  const end = lines.indexOf(SEEDERS_END)
+  const importAt = lines.findIndex((line) => line.startsWith('import UserSeeder from '))
+  if (start === -1 || end !== start + 2 || importAt === -1) {
+    throw new Error(
+      'The skeleton database/seeders/database.seeder.ts no longer has the strut:seeders markers this installer edits. Vendor a matching skeleton or update the installer.',
+    )
+  }
+  const imports = list.map((entry) => `import ${entry.name} from './${entry.file}.seeder.ts'`)
+  const call = `    await call([${list.map((entry) => entry.name).join(', ')}])`
+  return [
+    ...lines.slice(0, importAt),
+    ...imports,
+    ...lines.slice(importAt + 1, start + 1),
+    call,
+    ...lines.slice(end),
+  ].join('\n')
 }
 
 /**
- * The seeders: \`database.seeder.ts\` runs the others in dependency order from the list between
- * the \`strut:seeders\` markers (decision #104; \`make:migration --seeder\` keeps that list), plus
- * the first admin (with sign-in) and the sample data (when chosen).
+ * The first admin (INSTALLER.md §5, bugs 1 and 6): seeders come from
+ * `@strutvane/framework/database`, and `SeedContext.env` is the `APP_ENV` string, so the address
+ * is read from the process environment (falling back to `.env`), never from `env[...]`.
  */
-function seeders(options: ProjectOptions): GeneratedFile[] {
-  const list: SeederFile[] = []
-  if (options.auth !== 'none')
-    list.push({ file: 'admin', name: 'AdminSeeder', content: ADMIN_SEEDER })
-  if (options.sampleData)
-    list.push({ file: 'sample-data', name: 'SampleDataSeeder', content: SAMPLE_DATA_SEEDER })
-  const imports = list.map((seeder) => `import ${seeder.name} from './${seeder.file}.seeder.ts'\n`)
-  const call = list.length === 0 ? '[]' : `[${list.map((seeder) => seeder.name).join(', ')}]`
-  return [
-    {
-      path: 'database/seeders/database.seeder.ts',
-      content: `// Seeds the database: \`node strut db:seed\` (and \`node strut migrate --seed\`) run this file.
-// The list between the markers is kept in dependency order by node strut make:migration --seeder;
-// everything outside the markers is yours.
-import { defineSeeder } from '@strutvane/framework'
-${imports.join('')}
-export default defineSeeder({
-  async run({ call }) {
-    // strut:seeders:start
-    await call(${call})
-    // strut:seeders:end
-  },
-})
-`,
-    },
-    ...list.map((seeder) => ({
-      path: `database/seeders/${seeder.file}.seeder.ts`,
-      content: seeder.content,
-    })),
-  ]
-}
-
-const ADMIN_SEEDER = `// The first admin (SEED_ADMIN_EMAIL in .env), created once. Development only: seeding refuses to
-// run with APP_ENV=production or staging. The password is never stored in .env: setup passes a
-// one-time password to this seeder and shows it once; it must be changed at the first sign-in.
+const ADMIN_SEEDER = `// The first admin (SEED_ADMIN_EMAIL in .env), created once. Development only: seeding stops for
+// APP_ENV=production or staging. The password is never stored in .env: setup passes a one-time
+// password to this seeder and shows it once; it must be changed at the first sign-in.
 // Lost it? Run: node strut user:password <email>
+import { existsSync } from 'node:fs'
 import { firstAdmin } from '@strutvane/auth'
-import { defineSeeder } from '@strutvane/framework'
+import { defineSeeder } from '@strutvane/framework/database'
+
+/** SEED_ADMIN_EMAIL from the environment, else from .env (seeders run in the project root). */
+function adminEmail(): string {
+  if (process.env['SEED_ADMIN_EMAIL'] === undefined && existsSync('.env')) process.loadEnvFile('.env')
+  return process.env['SEED_ADMIN_EMAIL'] ?? ''
+}
 
 export default defineSeeder({
   async run({ db, env }) {
-    await firstAdmin(db).createOnce({ name: 'Admin', email: env['SEED_ADMIN_EMAIL'] ?? '' })
+    // \`env\` is APP_ENV (local, testing, staging or production), not the environment variables.
+    if (env === 'production' || env === 'staging') return
+    await firstAdmin(db).createOnce({ name: 'Admin', email: adminEmail() })
   },
-})
-`
-
-const SAMPLE_DATA_SEEDER = `// Sample records so the generated screens are not empty on day one (chosen in the installer).
-// Add a factory call per model as you create models: await factory(Post).count(20).create()
-import { defineSeeder } from '@strutvane/framework'
-
-export default defineSeeder({
-  after: ['admin'],
-  async run() {},
-})
-`
-
-function uiFiles(options: ProjectOptions): GeneratedFile[] {
-  const starter =
-    options.ui === 'admin' ? 'admin screens generated from your models' : 'a blank React app'
-  return [
-    {
-      path: 'resources/ui/index.html',
-      content: `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${options.name}</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="./main.tsx"></script>
-  </body>
-</html>
-`,
-    },
-    {
-      path: 'resources/ui/main.tsx',
-      content: `// The React UI entry (${starter}). Vite serves it through \`node strut dev\`.
-export const starter = '${options.ui ?? 'blank'}'
-`,
-    },
-    ...designFiles(options),
-  ]
-}
-
-/**
- * The design choice: `config/ui.ts` (which design package styles the UI) and
- * `resources/ui/theme.css` (the developer's own overrides, owned code the design never touches).
- *
- * Why two files: switching design rewrites only the one line in config/ui.ts, so a brand colour
- * set in theme.css survives the switch and every design upgrade.
- */
-function designFiles(options: ProjectOptions): GeneratedFile[] {
-  if (options.design === undefined) return []
-  const { packageName } = designInfo(options.design)
-  const other = otherDesign(options.design)
-  const switchHint =
-    other === undefined
-      ? ''
-      : `//
-// Switch to another design later with one command (it swaps the package and updates this file):
-//   node strut design:use ${other}
-// Designs available: ${DESIGN_NAMES.join(', ')}.
-`
-  return [
-    {
-      path: 'config/ui.ts',
-      content: `// The look of the React UI. The screens come from @strutvane/ui (behaviour only); the design
-// package ${packageName} gives them their colours, fonts, layout shell and component styles.
-${switchHint}//
-// Your own brand colour, font or corner radius? Do not edit the design package: put your overrides
-// in resources/ui/theme.css. That file is yours, so it stays when you switch or upgrade the design.
-export default {
-  design: '${options.design}',
-  // Light, dark, or follow the system setting (each user can still switch in the app).
-  appearance: ${JSON.stringify(options.appearance ?? 'system')},
-  // UI languages; add more any time (translations live in resources/ui/lang).
-  languages: ${JSON.stringify(options.uiLanguages ?? ['en'])},
-  // Installable app (PWA): home-screen icon and an offline page.
-  pwa: ${JSON.stringify(options.pwa ?? false)},
-  // Live updates: tables refresh when someone else changes the data.
-  liveUpdates: ${JSON.stringify(options.liveUpdates ?? false)},
-}
-`,
-    },
-    { path: 'resources/ui/theme.css', content: themeCss(packageName) },
-  ]
-}
-
-/**
- * The owned theme file: every override is commented out, so a fresh app looks exactly like the
- * chosen design until the developer uncomments a line. Token names follow @strutvane/ui
- * (spike 14: one accent knob `--brand-hue`, `--font-sans`, `--radius`).
- */
-function themeCss(packageName: string): string {
-  return `/*
- * Your theme overrides. This file is yours: upgrades and \`node strut design:use\` never change it.
- *
- * The design (${packageName}, chosen in config/ui.ts) sets every token below. It loads first and
- * this file loads after it, so whatever you set here wins. Uncomment a line and change its value
- * to restyle the whole app; anything left commented keeps the design's own value.
- */
-
-:root {
-  /* Brand colour: buttons, links, focus rings and the active menu item. It is an OKLCH hue from
-     0 to 360 (250 = blue, 150 = green, 25 = red); the design derives every shade from it and keeps
-     text contrast readable (WCAG AA) for any hue. */
-  /* --brand-hue: 250; */
-
-  /* Font for the whole UI. Load a web font in resources/ui/index.html first, or use one the
-     computer already has. */
-  /* --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif; */
-
-  /* Corner radius of cards, inputs and buttons: 0 for square corners, 0.75rem for soft ones. */
-  /* --radius: 0.5rem; */
-}
-
-/* Dark mode: the same tokens, set only for the dark theme. */
-/* .dark { --brand-hue: 250; } */
-`
-}
-
-const HEALTH_TEST = `// A first feature test (Vitest): the health controller answers "ok". Run: npm test
-import { describe, expect, it } from 'vitest'
-import { HealthController } from '../../app/http/controllers/health.controller.ts'
-
-describe('GET /api/health', () => {
-  it('answers ok', () => {
-    expect(HealthController.show()).toEqual({ status: 'ok' })
-  })
 })
 `
 
 const BROWSER_TEST = `// Browser test (Playwright). Browsers download on the first: npm run test:e2e
 export const homePage = '/'
 `
+
+/**
+ * `config/ui.ts` with the answers the skeleton's template does not take yet (appearance, UI
+ * languages, installable app, live updates). The template holds the defaults; a line changes
+ * only when the answer differs, and a missing line stops the run (never a silently lost answer).
+ *
+ * @example
+ * uiConfig(skeletonText, options)
+ */
+export function uiConfig(skeleton: string, options: ProjectOptions): string {
+  const replace = (text: string, from: string, to: string): string => {
+    if (!text.includes(from)) {
+      throw new Error(
+        `The skeleton config/ui.ts no longer has "${from.trim()}". Vendor a matching skeleton or update the installer.`,
+      )
+    }
+    return text.replace(from, to)
+  }
+  const literal = (value: unknown): string =>
+    JSON.stringify(value).replaceAll('"', "'").replaceAll(',', ', ')
+  let text = replace(
+    skeleton,
+    "  appearance: 'system',\n",
+    `  appearance: ${literal(options.appearance ?? 'system')},\n`,
+  )
+  text = replace(
+    text,
+    "  languages: ['en'],\n",
+    `  languages: ${literal(options.uiLanguages ?? ['en'])},\n`,
+  )
+  const extra: string[] = []
+  if (options.pwa === true)
+    extra.push(
+      '  /** Installable app (PWA): home-screen icon and an offline page. */',
+      '  pwa: true,',
+    )
+  if (options.liveUpdates === true)
+    extra.push(
+      '  /** Live updates: tables refresh when someone else changes the data. */',
+      '  liveUpdates: true,',
+    )
+  return extra.length === 0 ? text : replace(text, '\n}\n', `\n${extra.join('\n')}\n}\n`)
+}

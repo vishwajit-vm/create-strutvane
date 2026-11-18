@@ -1,5 +1,5 @@
 /**
- * Where this package is installed, so the static template files (`templates/strut.js`) are found
+ * Where this package is installed, so the vendored skeleton (`skeleton/`) is found
  * the same way from the TypeScript sources (tests, `node src/cli.ts`) and from the bundled `dist/`.
  *
  * Why walk up instead of a fixed `../`: the sources sit one folder deeper than the bundle, and a
@@ -17,7 +17,7 @@ let cached: string | undefined
  * The folder that holds create-strutvane's package.json.
  *
  * @example
- * join(packageRoot(), 'templates', 'strut.js')
+ * join(packageRoot(), 'skeleton', 'skeleton.json')
  */
 export function packageRoot(): string {
   if (cached !== undefined) return cached
