@@ -188,7 +188,8 @@ describe('generated files', () => {
         strut: 'node strut',
       },
       devDependencies: { vitest: VITEST.version },
-      allowScripts: {},
+      // Refused in every app: fsevents' script, name-only so any version is covered (macOS CI).
+      allowScripts: { fsevents: false },
     })
     const npmrc = file(project, '.npmrc')
     for (const guard of [

@@ -59,6 +59,10 @@ Branch progress for the switch from inline templates to the vendored strutvane-s
   still refuse the skeleton `user.policy.ts` in `node strut registry:build` (skeleton follow-up b).
 - **auth**: done in 0.2.0-next.1 (`createFirstAdmin`, `FirstAdminError`, `auth:migration`); the
   installer uses it (see item 5).
+- **skeleton**: its `package.json` should carry `"allowScripts": { "fsevents": false }` itself
+  (macOS: Vite/Vitest pull in fsevents, and strict-allow-scripts fails every rebuild with scripts
+  on). Until then the installer adds it (`REFUSED_INSTALL_SCRIPTS`, `appAllowScripts`; the
+  skeleton's own entries win). Found on macOS CI, 2026-11-19.
 - **tooling**: the synced `check-package.mjs` (R5) refuses test folders/files in a tarball, which
   also hits template payload; the installer stores the app's tests as `_tests/…/*._test.ts` (like
   `_gitignore`). An allowlist for template folders in tooling would make that unnecessary.

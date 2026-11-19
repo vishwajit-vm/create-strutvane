@@ -6,6 +6,8 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { classifyInstallFailure, installArgs, rebuildAllowlist } from '../src/steps/install.ts'
+import { appAllowScripts } from '../src/templates/project.ts'
+import { REFUSED_INSTALL_SCRIPTS } from '../src/version.ts'
 import { tempFolder } from './helpers/fakes.ts'
 
 describe('npm failures in plain words', () => {
@@ -59,5 +61,34 @@ describe('the rebuild allowlist is package.json "allowScripts"', () => {
     expect(rebuildAllowlist(project({ allowScripts: ['esbuild'] }))).toEqual([])
     expect(rebuildAllowlist(project('not an object'))).toEqual([])
     expect(rebuildAllowlist(tempFolder('cs-empty-'))).toEqual([])
+  })
+})
+
+// Regression (class: a dependency's install script that strict-allow-scripts does not cover fails
+// every rebuild with scripts on). fsevents on macOS CI: refused name-only in every generated app.
+describe('generated apps refuse known install scripts (allowScripts)', () => {
+  it('adds the name-only refusals, and the skeleton keeps the last word for its own keys', () => {
+    expect(REFUSED_INSTALL_SCRIPTS).toEqual({ fsevents: false })
+    expect(appAllowScripts({})).toEqual({ fsevents: false })
+    expect(appAllowScripts(undefined)).toEqual({ fsevents: false })
+    expect(appAllowScripts({ 'esbuild@0.25.0': true })).toEqual({
+      fsevents: false,
+      'esbuild@0.25.0': true,
+    })
+    expect(appAllowScripts({ fsevents: true })).toEqual({ fsevents: true })
+  })
+
+  it('drops what npm would reject instead of failing the install', () => {
+    expect(appAllowScripts(['esbuild'])).toEqual({ fsevents: false })
+    expect(appAllowScripts({ esbuild: 'yes', sharp: 1 })).toEqual({ fsevents: false })
+  })
+
+  it('a refusal is never rebuilt', () => {
+    const folder = tempFolder('cs-refused-')
+    writeFileSync(
+      join(folder, 'package.json'),
+      JSON.stringify({ allowScripts: appAllowScripts({}) }),
+    )
+    expect(rebuildAllowlist(folder)).toEqual([])
   })
 })

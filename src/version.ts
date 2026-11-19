@@ -78,6 +78,29 @@ export interface PinnedPackage {
 }
 
 /**
+ * Install scripts every generated app refuses, as package.json `"allowScripts"` entries.
+ *
+ * Why: the app's `.npmrc` sets `strict-allow-scripts`, so any dependency with an install script
+ * that `allowScripts` does not cover fails the install or rebuild the moment scripts run (the
+ * installer's `npm rebuild <allowlist>`, or a developer approving a package). The app's toolchain
+ * (Vite, Vitest) pulls in `fsevents`, the macOS file-watching addon, whose install script only
+ * rebuilds a native binary the package already ships prebuilt. On macOS every such rebuild failed
+ * with ESTRICTALLOWSCRIPTS (other systems never install it: npm skips optional dependencies for
+ * another `os`).
+ *
+ * Why a name-only `false` and not `"fsevents@2.3.3": false`: npm 11.19 pins approvals to a version
+ * on purpose (you reviewed that release), but a refusal is name-only (what `npm deny-scripts`
+ * writes) and covers every version. A pinned refusal would break again as soon as Vite moved to the
+ * next fsevents release; refusing a script needs no review of the new version. Checked on
+ * 2026-11-19 with npm 11.19.0 and the real fsevents 2.3.3 installed for darwin/arm64
+ * (`--os=darwin --cpu=arm64`): no entry or `fsevents@2.3.2` fails, `"fsevents": false` installs.
+ * `test/install-scripts.e2e.test.ts` repeats that check.
+ */
+export const REFUSED_INSTALL_SCRIPTS: Readonly<Record<string, false>> = Object.freeze({
+  fsevents: false,
+})
+
+/**
  * Database drivers, pinned exactly (versions at least three days old when chosen). SQLite needs
  * none: the framework uses Node's built-in `node:sqlite`.
  */

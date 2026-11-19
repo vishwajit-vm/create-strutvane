@@ -284,7 +284,13 @@ describe('real end-to-end run (SQLite, no Docker)', () => {
         env,
       )
       expect(approve.code, approve.output).toBe(0)
-      expect(JSON.parse(readFileSync(manifestPath, 'utf8')).allowScripts).not.toEqual({})
+      const approved = JSON.parse(readFileSync(manifestPath, 'utf8')).allowScripts as Record<
+        string,
+        boolean
+      >
+      // npm added an approval for canary; the app's own refusals are still there.
+      expect(Object.values(approved).filter((value) => value === true)).toHaveLength(1)
+      expect(approved['fsevents']).toBe(false)
       const rebuild = run(
         process.execPath,
         [NPM, 'rebuild', 'canary', '--ignore-scripts=false'],

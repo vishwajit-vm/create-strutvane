@@ -32,6 +32,7 @@ import {
   DRIVERS,
   FRAMEWORK_RANGE,
   type PinnedPackage,
+  REFUSED_INSTALL_SCRIPTS,
   VERSION,
 } from '../version.ts'
 import {
@@ -284,10 +285,32 @@ function appDependencies(
  * The skeleton's package.json (scripts, engines, devEngines, devDependencies) with the
  * dependencies replaced by {@link appDependencies}. `start` stays the skeleton's
  * `node strut start` (INSTALLER.md §5, bug 4: the framework never writes build/server.js).
+ * `allowScripts` gets the refusals every app needs ({@link REFUSED_INSTALL_SCRIPTS}); an entry the
+ * skeleton already has for the same key wins, so the template stays in charge of its own policy.
  */
 function packageJson(manifest: string, deps: Readonly<Record<string, string>>): string {
   const parsed = JSON.parse(manifest) as Record<string, unknown>
-  return `${JSON.stringify({ ...parsed, dependencies: deps }, null, 2)}\n`
+  const allowScripts = appAllowScripts(parsed['allowScripts'])
+  return `${JSON.stringify({ ...parsed, dependencies: deps, allowScripts }, null, 2)}\n`
+}
+
+/**
+ * A generated app's `allowScripts`: {@link REFUSED_INSTALL_SCRIPTS}, then the skeleton's own
+ * entries (which win for the same key). Anything that is not an object of booleans is dropped:
+ * npm would reject it, and an install must not fail on a template typo.
+ *
+ * @example
+ * appAllowScripts({}) // { fsevents: false }
+ * appAllowScripts({ 'esbuild@0.25.0': true }) // { fsevents: false, 'esbuild@0.25.0': true }
+ */
+export function appAllowScripts(own: unknown): Record<string, boolean> {
+  const entries =
+    typeof own === 'object' && own !== null && !Array.isArray(own)
+      ? Object.entries(own).filter(
+          (entry): entry is [string, boolean] => typeof entry[1] === 'boolean',
+        )
+      : []
+  return { ...REFUSED_INSTALL_SCRIPTS, ...Object.fromEntries(entries) }
 }
 
 /** AGENTS.md: the short playbook AI coding agents read first. */
