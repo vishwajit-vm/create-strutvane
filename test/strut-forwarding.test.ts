@@ -4,7 +4,7 @@
  * (a small .cjs file run by node; see STRUT_CONTAINER_CLI in strut.js) records what would have run.
  */
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { resolveOptions } from '../src/options.ts'
@@ -36,8 +36,18 @@ beforeAll(async () => {
   log = join(root, 'docker.log')
 })
 
+/**
+ * Do two paths name the same folder? strut.js passes its own folder (import.meta.dirname), and Node
+ * loads the main module from its real path: on macOS the temp folder /var/folders/... is a symlink
+ * to /private/var/folders/..., so a plain string comparison failed there (macOS CI). Same folder,
+ * so both sides are compared as real paths.
+ */
+function sameFolder(received: string | undefined, expected: string): boolean {
+  return received !== undefined && realpathSync(received) === realpathSync(expected)
+}
+
 /** Run `node strut.js <args>` in the project with the fake docker. */
-function strut(args: string[], env: Record<string, string> = {}) {
+function strut(args: string[], env: Record<string, string> = {}, cwd = directory) {
   writeFileSync(log, '')
   // Windows environment names ignore case: drop any inherited spelling of an overridden name.
   const overridden = new Set(Object.keys(env).map((key) => key.toLowerCase()))
@@ -45,7 +55,7 @@ function strut(args: string[], env: Record<string, string> = {}) {
     Object.entries(process.env).filter(([key]) => !overridden.has(key.toLowerCase())),
   )
   const result = spawnSync(process.execPath, ['strut.js', ...args], {
-    cwd: directory,
+    cwd,
     encoding: 'utf8',
     env: {
       ...inherited,
@@ -146,15 +156,16 @@ describe('strut.js in Docker mode', () => {
     const result = strut(['setup'], { npm_execpath: fakeNpm })
     expect(result.calls).toHaveLength(0)
     expect(result.code, result.output).toBe(0)
-    expect(JSON.parse(readFileSync(`${fakeNpm}.args`, 'utf8'))).toEqual([
+    const args = JSON.parse(readFileSync(`${fakeNpm}.args`, 'utf8')) as string[]
+    expect(args.slice(0, -1)).toEqual([
       'exec',
       '--yes',
       `--package=create-strutvane@${VERSION}`,
       '--',
       'create-strutvane',
       '--resume',
-      directory,
     ])
+    expect(sameFolder(args.at(-1), directory)).toBe(true)
   })
 
   it('setup uses the installer that made this copy while it still exists', () => {
@@ -168,9 +179,37 @@ describe('strut.js in Docker mode', () => {
     writeFileSync(state, JSON.stringify({ resumeWith: [process.execPath, script, '--resume'] }))
     try {
       expect(strut(['setup']).code).toBe(0)
-      expect(JSON.parse(readFileSync(`${script}.args`, 'utf8'))).toEqual(['--resume', directory])
+      const args = JSON.parse(readFileSync(`${script}.args`, 'utf8')) as string[]
+      expect(args).toHaveLength(2)
+      expect(args[0]).toBe('--resume')
+      expect(sameFolder(args[1], directory)).toBe(true)
     } finally {
       rmSync(state)
+    }
+  })
+
+  // The macOS case on every OS: the project is reached through a symlinked folder (macOS:
+  // /var -> /private/var; here a junction or symlink made by the test).
+  it('setup through a symlinked folder resumes that same project folder', () => {
+    const script = join(directory, '..', 'fake-installer-link.cjs')
+    writeFileSync(
+      script,
+      `require('node:fs').writeFileSync(${JSON.stringify(`${script}.args`)}, JSON.stringify(process.argv.slice(2)))`,
+    )
+    const linked = join(directory, '..', 'linked-app')
+    symlinkSync(directory, linked, 'junction') // 'junction' needs no admin rights on Windows; ignored elsewhere
+    const state = join(directory, '.strutvane', 'local', 'setup.json')
+    mkdirSync(join(directory, '.strutvane', 'local'), { recursive: true })
+    writeFileSync(state, JSON.stringify({ resumeWith: [process.execPath, script, '--resume'] }))
+    try {
+      expect(strut(['setup'], {}, linked).code).toBe(0)
+      const args = JSON.parse(readFileSync(`${script}.args`, 'utf8')) as string[]
+      expect(args[0]).toBe('--resume')
+      expect(sameFolder(args[1], linked)).toBe(true)
+      expect(sameFolder(args[1], directory)).toBe(true)
+    } finally {
+      rmSync(state)
+      rmSync(linked, { recursive: false, force: true })
     }
   })
 
