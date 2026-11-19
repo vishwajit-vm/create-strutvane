@@ -1,5 +1,6 @@
 /**
- * Step "migrate": run the app's own `node strut migrate --seed`.
+ * Step "migrate": copy auth's migrations into the app (`node strut auth:migration`, apps with
+ * sign-in), then run the app's own `node strut migrate --seed`.
  *
  * Why call the app instead of migrating from the installer: the app's CLI is what developers run
  * every day, so setup exercises the exact same code path (and package migrations the app
@@ -10,19 +11,45 @@
  * - the first admin's one-time password travels only in STRUT_SEED_ADMIN_PASSWORD (environment);
  *   the seeder prints "Admin created: <email>" when it used it;
  * - exit 0 = migrated and seeded; exit 3 = database unreachable; anything else = failed;
+ * - apps with sign-in: `node strut auth:migration` runs first, because the first admin's seeder
+ *   (@strutvane/auth's createFirstAdmin()) needs auth's tables, and those arrive as ordinary
+ *   migration files the app owns. It is idempotent (files already there are left alone), so a
+ *   retry or a fresh clone's setup runs it again safely;
  * - all output goes to the setup log (password redacted); the last lines are shown on failure.
  *
  * @module
  */
-import { lastLines } from '../spawn.ts'
+import { type CommandResult, lastLines } from '../spawn.ts'
 import { execInApp } from './compose.ts'
-import { failed, type Step } from './types.ts'
+import { failed, type Step, type StepContext } from './types.ts'
 
 /** The exit code `node strut` uses for "cannot reach the database". */
 export const EXIT_DATABASE_UNREACHABLE = 3
 
 /** The environment variable that carries the first admin's one-time password to the seeder. */
 export const ADMIN_PASSWORD_VARIABLE = 'STRUT_SEED_ADMIN_PASSWORD'
+
+/**
+ * Run `node strut <args>` in the app: inside the app container in Docker mode (`-e NAME` copies
+ * each value from our environment, so values stay off argv), else `<node> strut.js` in the project.
+ */
+function runStrut(
+  context: StepContext,
+  args: readonly string[],
+  env: Readonly<Record<string, string>> = {},
+  redact: readonly string[] = [],
+): Promise<CommandResult> {
+  return context.options.docker
+    ? execInApp(context, ['node', 'strut', ...args], { env, redact })
+    : context.spawn({
+        command: context.execPath,
+        args: ['strut.js', ...args],
+        cwd: context.directory,
+        env,
+        logFile: context.logFile,
+        redact,
+      })
+}
 
 /**
  * The migrate step.
@@ -36,25 +63,23 @@ export const migrateStep: Step = {
   needs: () => ['install', 'database'],
   applies: () => true,
   run: async (context) => {
+    if (context.options.auth !== 'none') {
+      const copied = await runStrut(context, ['auth:migration'])
+      if (copied.code !== 0) {
+        return failed(
+          'command-failed',
+          `node strut auth:migration failed (exit code ${copied.code}), so auth's migrations are not in database/migrations.`,
+          `Fix the cause shown, then run: npm run setup  (full log: ${context.logFile})`,
+          lastLines(copied.output, 8),
+        )
+      }
+    }
     // The first admin's one-time password: made here, handed over in the child's environment only
     // (never argv, never .env), hidden in the log, and shown once at the end (security review F-18).
     const typed = context.typedAdminPassword
     const adminPassword = typed ?? context.generatePassword()
     const env = { [ADMIN_PASSWORD_VARIABLE]: adminPassword }
-    // Docker mode: inside the app container (`-e NAME` copies the value from our environment).
-    const result = context.options.docker
-      ? await execInApp(context, ['node', 'strut', 'migrate', '--seed'], {
-          env,
-          redact: [adminPassword],
-        })
-      : await context.spawn({
-          command: context.execPath,
-          args: ['strut.js', 'migrate', '--seed'],
-          cwd: context.directory,
-          env,
-          logFile: context.logFile,
-          redact: [adminPassword],
-        })
+    const result = await runStrut(context, ['migrate', '--seed'], env, [adminPassword])
     if (result.code === 0) {
       const lines = result.output.split(/\r?\n/)
       const summary = lines

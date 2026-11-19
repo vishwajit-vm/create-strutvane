@@ -59,6 +59,7 @@ describe('question 14: Docker is the default only when it is running (never requ
       'docker info',
       'npm install',
       'strut db:prepare',
+      'strut auth:migration',
       'strut migrate',
     ])
     expect(result.env().get('DB_HOST')).toBe('127.0.0.1')
@@ -77,6 +78,7 @@ describe('question 14: Docker is the default only when it is running (never requ
       'docker info',
       'npm install',
       'strut db:prepare',
+      'strut auth:migration',
       'strut migrate',
     ])
     expect(existsSync(join(result.directory, 'docker'))).toBe(false)
@@ -179,6 +181,7 @@ describe('after a Docker problem: your own server first, then Docker, then SQLit
     expect(calls.slice(calls.indexOf('npm install'))).toEqual([
       'npm install',
       'strut db:prepare',
+      'strut auth:migration',
       'strut migrate',
     ])
     const env = result.env()

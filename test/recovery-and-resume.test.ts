@@ -376,13 +376,61 @@ describe('migrate and git failures', () => {
 
   it('database unreachable during migrate (CI): exit 2 with what to do', async () => {
     const result = await create(['--yes'], {
-      strut: () => ({ code: 3, output: 'Cannot reach MySQL at db:3306 (ECONNREFUSED)' }),
+      strut: (spec) =>
+        spec.args.includes('migrate')
+          ? { code: 3, output: 'Cannot reach MySQL at db:3306 (ECONNREFUSED)' }
+          : undefined,
     })
     expect(result.code).toBe(2)
     expect(result.output()).toMatch(
       /The database could not be reached[\s\S]*node strut services:up/,
     )
     expect(statusOf(result.directory)).toMatchObject({ migrate: 'failed', git: 'pending' })
+  })
+
+  // auth 0.2.0-next.1: the first admin's seeder needs auth's tables, which arrive as migration
+  // files the app owns (`node strut auth:migration`), so they must be in place before migrate.
+  it('sign-in apps: auth:migration runs before migrate; if it fails, migrate never runs', async () => {
+    const result = await create(['--yes', '--db', 'sqlite'], {
+      strut: (spec) =>
+        spec.args.includes('auth:migration')
+          ? { code: 1, output: 'Cannot write database/migrations (EACCES)' }
+          : undefined,
+    })
+    expect(result.code).toBe(2)
+    expect(result.output()).toMatch(/node strut auth:migration failed \(exit code 1\)/)
+    expect(result.output()).toMatch(/EACCES/)
+    const calls = result.world.calls.map(describeCall)
+    expect(calls).toContain('strut auth:migration')
+    expect(calls).not.toContain('strut migrate')
+    expect(statusOf(result.directory)).toMatchObject({ migrate: 'failed', git: 'pending' })
+  })
+
+  it('without sign-in there is no auth, so no auth:migration', async () => {
+    const result = await create(['--yes', '--db', 'sqlite', '--sign-in', 'none', '--no-git'])
+    expect(result.code).toBe(0)
+    const calls = result.world.calls.map(describeCall)
+    expect(calls).not.toContain('strut auth:migration')
+    expect(calls).toContain('strut migrate')
+  })
+
+  it('resume after an auth:migration failure runs it again (it is idempotent), then migrates', async () => {
+    let copies = 0
+    const failing = await create(['--yes', '--db', 'sqlite', '--no-git'], {
+      strut: (spec) =>
+        spec.args.includes('auth:migration') && ++copies === 1
+          ? { code: 1, output: 'disk full' }
+          : undefined,
+    })
+    expect(failing.code).toBe(2)
+    const world = fakePrograms({})
+    const resumed = fakeEnvironment({
+      cwd: failing.cwd,
+      argv: ['--resume', failing.directory],
+      spawn: world.spawn,
+    })
+    expect(await main(resumed.environment)).toBe(0)
+    expect(world.calls.map(describeCall)).toEqual(['strut auth:migration', 'strut migrate'])
   })
 
   it('no git identity: exit 2 with the git config commands; resume commits', async () => {

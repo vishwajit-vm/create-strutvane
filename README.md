@@ -40,7 +40,7 @@ Every command the installer prints uses its own channel (`@next` for a pre-relea
 3. **Picks free ports** and moves away from any taken between the check and the start.
 4. **Starts the database**: your own MySQL, MariaDB or PostgreSQL server (XAMPP, WAMP, MAMP, Laragon, Postgres.app, a local install, a remote or cloud database), Docker (like Laravel Sail: the app, the database and Mailpit in containers), or SQLite. Docker is never required.
 5. **Installs** with npm, with no dependency install scripts.
-6. **Migrates and seeds**, creating the first admin with a one-time password shown once.
+6. **Migrates and seeds**, creating the first admin with a one-time password shown once. With sign-in, `node strut auth:migration` first copies `@strutvane/auth`'s migrations into `database/migrations` (they become the app's own files).
 7. **Makes the first git commit**, after checking that secrets and local data are ignored.
 8. Offers to run `npm run dev`.
 
@@ -57,7 +57,7 @@ Progress is saved after every step. If one fails, it explains why in plain words
 | `.strutvane/local/` | Machine-local state, git-ignored: setup progress, logs, a per-computer Docker override (`env.json`). The rest of `.strutvane/` is generated and committed |
 | `config/auth.ts` | The sign-in features you picked (`password`, `emailLink`, `registration`, `emailVerification`, `passwordReset`, `passwordConfirmation`, `twoFactor`, `passkeys`, `apiTokens`, `teams`, `impersonation`). Not env keys |
 | `.env`, `.env.example` | The skeleton's `.env.example` lists every key the config files read, production-safe and without secrets; `.env` gets this machine's values (`APP_ENV=local`, `APP_DEBUG=true`, `LOG_LEVEL=debug`, ports, secrets). Logging channels come from `LOG_CHANNEL`, `LOG_STACK`, `LOG_LEVEL` (ADR-0022) |
-| `database/seeders/admin.seeder.ts` | With sign-in: the first admin through `@strutvane/auth`'s `createFirstAdmin()`. Until the installed auth has it, seeding skips the admin and says how to finish |
+| `database/seeders/admin.seeder.ts` | With sign-in: the first admin through `@strutvane/auth`'s `createFirstAdmin()` (auth 0.2.0-next.1 or later). Seeding again keeps an existing admin (`first_admin_exists`); a password auth generates on a manual run is printed once |
 | `Dockerfile`, `.dockerignore` | Only with `--deploy docker` (ADR-0021): multi-stage, non-root, no secrets, runs `node strut start` from the sources, `HEALTHCHECK` on `/up`, logs as JSON to stderr |
 | `.devcontainer/` | Only with `--dev-container` (ADR-0021) |
 | `docker/compose.yaml` | Docker mode only, git-ignored (ADR-0006): every port on 127.0.0.1 |

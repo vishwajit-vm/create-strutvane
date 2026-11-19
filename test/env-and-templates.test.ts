@@ -19,7 +19,7 @@ import { type ProjectOptions, resolveOptions } from '../src/options.ts'
 import { isForbiddenInCommit, MUST_BE_IGNORED } from '../src/steps/git.ts'
 import { secretKeys } from '../src/templates/env.ts'
 import { renderProject } from '../src/templates/project.ts'
-import { DRIVERS, FRAMEWORK_RANGE, VITEST } from '../src/version.ts'
+import { AUTH_RANGE, DRIVERS, FRAMEWORK_RANGE, VITEST } from '../src/version.ts'
 import { tempFolder } from './helpers/fakes.ts'
 
 const options = (extra: Parameters<typeof resolveOptions>[0] = {}): ProjectOptions =>
@@ -357,7 +357,7 @@ describe('Docker mode files (everything in containers, like Sail)', () => {
     expect(project.some((f) => f.path.startsWith('.strutvane/local/'))).toBe(false)
   })
 
-  it('pins the database driver exactly; Strutvane packages use the framework range', () => {
+  it('pins the database driver exactly; Strutvane packages use the framework range (auth: its floor)', () => {
     for (const [database, driver] of [
       ['mysql', 'mysql2'],
       ['postgres', 'pg'],
@@ -373,7 +373,7 @@ describe('Docker mode files (everything in containers, like Sail)', () => {
       JSON.parse(file(renderProject(options({ database: 'sqlite' })), 'package.json')).dependencies,
     ).toMatchObject({
       '@strutvane/framework': FRAMEWORK_RANGE,
-      '@strutvane/auth': FRAMEWORK_RANGE,
+      '@strutvane/auth': AUTH_RANGE, // the first auth with createFirstAdmin and auth:migration
       '@strutvane/design-crisp': FRAMEWORK_RANGE,
       '@strutvane/ui': FRAMEWORK_RANGE,
     })

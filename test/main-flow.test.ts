@@ -40,6 +40,7 @@ describe('CI mode (--yes and flags)', () => {
       'docker compose up',
       'app: chown 1000:1000',
       'app: npm install',
+      'app: strut auth:migration', // auth's migrations first: the admin seeder needs its tables
       'app: strut migrate',
       'git --version',
       'git rev-parse',
@@ -127,8 +128,12 @@ describe('CI mode (--yes and flags)', () => {
       spawn: world.spawn,
     })
     expect(await main(environment)).toBe(0)
-    expect(world.calls.map(describeCall).slice(0, 2)).toEqual(['npm install', 'strut migrate'])
-    const [npm, migrate] = world.calls
+    expect(world.calls.map(describeCall).slice(0, 3)).toEqual([
+      'npm install',
+      'strut auth:migration',
+      'strut migrate',
+    ])
+    const [npm, authMigration, migrate] = world.calls
     expect(npm?.command).toBe(FAKE_NODE)
     expect(npm?.args).toEqual([
       FAKE_NPM_CLI,
@@ -137,6 +142,12 @@ describe('CI mode (--yes and flags)', () => {
       '--no-audit',
       '--no-fund',
     ])
+    // No password travels to the copy command; it only copies files.
+    expect(authMigration).toMatchObject({
+      command: FAKE_NODE,
+      args: ['strut.js', 'auth:migration'],
+    })
+    expect(authMigration?.env ?? {}).toEqual({})
     expect(migrate?.command).toBe(FAKE_NODE)
     expect(migrate?.args).toEqual(['strut.js', 'migrate', '--seed'])
     expect(migrate?.redact).toEqual(['Abcd-Efgh-Jkmn-Pqrs'])

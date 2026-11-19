@@ -228,17 +228,32 @@ describe('INSTALLER.md §5: the seven bugs of the old inline templates, each wit
   })
 })
 
-describe('the generated first-admin seeder, run for real (createFirstAdmin behind a guard)', () => {
+describe('the generated first-admin seeder, run for real (@strutvane/auth createFirstAdmin)', () => {
   const seeder =
     renderProject(options()).find((f) => f.path === 'database/seeders/admin.seeder.ts')?.content ??
     ''
 
+  // A stand-in with auth 0.2.0-next.1's contract: it echoes the call, then answers as STUB_MODE
+  // says (created, or one of FirstAdminError's codes, or an error that only looks like one).
+  const AUTH_STUB = `export class FirstAdminError extends Error {
+  constructor(code, message) { super(message + ' (' + code + ')'); this.name = 'FirstAdminError'; this.code = code }
+}
+export async function createFirstAdmin(db, input) {
+  process.stdout.write('CALL ' + JSON.stringify({ db, input }) + '\\n')
+  const mode = process.env.STUB_MODE ?? 'created'
+  if (mode === 'look-alike') throw Object.assign(new Error('not auth'), { code: 'first_admin_exists' })
+  if (mode !== 'created') throw new FirstAdminError(mode, 'refused by auth')
+  return { userId: '1', email: input.email, role: 'admin',
+    ...(input.password === undefined ? { oneTimePassword: 'Shown-Once-Only-7' } : {}) }
+}
+`
+
   /** A throw-away app folder with stub packages; returns what the seeder printed. */
-  function runSeeder(authSource: string, appEnv: string, envFile: string) {
+  function runSeeder(appEnv: string, extra: Record<string, string> = {}) {
     const folder = tempFolder('cs-admin-seeder-')
     mkdirSync(join(folder, 'database', 'seeders'), { recursive: true })
     writeFileSync(join(folder, 'database', 'seeders', 'admin.seeder.ts'), seeder)
-    writeFileSync(join(folder, '.env'), envFile)
+    writeFileSync(join(folder, '.env'), 'SEED_ADMIN_EMAIL=boss@acme.test\n')
     const stub = (name: string, files: Record<string, string>, exports: Record<string, string>) => {
       const dir = join(folder, 'node_modules', '@strutvane', name)
       mkdirSync(dir, { recursive: true })
@@ -248,7 +263,7 @@ describe('the generated first-admin seeder, run for real (createFirstAdmin behin
       )
       for (const [file, text] of Object.entries(files)) writeFileSync(join(dir, file), text)
     }
-    stub('auth', { 'index.js': authSource }, { '.': './index.js' })
+    stub('auth', { 'index.js': AUTH_STUB }, { '.': './index.js' })
     stub(
       'framework',
       { 'database.js': 'export const defineSeeder = (definition) => definition\n' },
@@ -262,8 +277,10 @@ describe('the generated first-admin seeder, run for real (createFirstAdmin behin
         '',
       ].join('\n'),
     )
-    const environment = { ...process.env }
+    const environment: NodeJS.ProcessEnv = { ...process.env, ...extra }
     delete environment['SEED_ADMIN_EMAIL']
+    if (extra['STRUT_SEED_ADMIN_PASSWORD'] === undefined)
+      delete environment['STRUT_SEED_ADMIN_PASSWORD']
     const result = spawnSync(process.execPath, ['run.mjs', appEnv], {
       cwd: folder,
       env: environment,
@@ -272,33 +289,62 @@ describe('the generated first-admin seeder, run for real (createFirstAdmin behin
     return { code: result.status, stdout: result.stdout, stderr: result.stderr }
   }
 
-  const planned =
-    'export async function createFirstAdmin(db, admin) { process.stdout.write(JSON.stringify({ db, admin })) }\n'
+  /** The arguments createFirstAdmin received. */
+  const callOf = (stdout: string): unknown =>
+    JSON.parse(
+      stdout
+        .split('\n')
+        .find((line) => line.startsWith('CALL '))
+        ?.slice(5) ?? 'null',
+    )
 
-  it('calls createFirstAdmin(db, { name, email }) with SEED_ADMIN_EMAIL from .env', () => {
-    const result = runSeeder(planned, 'local', 'SEED_ADMIN_EMAIL=boss@acme.test\n')
-    expect(result.code, result.stderr).toBe(0)
-    expect(JSON.parse(result.stdout)).toEqual({
-      db: 'the-db',
-      admin: { name: 'Admin', email: 'boss@acme.test' },
-    })
+  it('imports createFirstAdmin and FirstAdminError statically (no guard for an older auth)', () => {
+    expect(seeder).toContain("import { createFirstAdmin, FirstAdminError } from '@strutvane/auth'")
+    expect(seeder).not.toContain('Reflect.get')
   })
 
-  it('without createFirstAdmin in the installed auth: creates nothing, says what to do, setup goes on', () => {
-    const result = runSeeder(
-      'export const name = "old auth"\n',
-      'local',
-      'SEED_ADMIN_EMAIL=a@b.test\n',
-    )
+  it('run by hand: createFirstAdmin(db, { name, email }) from .env, and the one-time password printed once', () => {
+    const result = runSeeder('local')
     expect(result.code, result.stderr).toBe(0)
-    expect(result.stdout).toBe('')
-    expect(result.stderr).toMatch(/no createFirstAdmin\(\) yet/)
-    expect(result.stderr).toMatch(/node strut db:seed --class AdminSeeder/)
+    expect(callOf(result.stdout)).toEqual({
+      db: 'the-db',
+      input: { name: 'Admin', email: 'boss@acme.test' },
+    })
+    expect(result.stdout).toContain('Admin created: boss@acme.test')
+    expect(result.stdout.split('Shown-Once-Only-7')).toHaveLength(2) // exactly once
+  })
+
+  it('run by setup: the password from STRUT_SEED_ADMIN_PASSWORD goes to auth and is never printed', () => {
+    const password = 'Setup-Pass-4711-abcd'
+    const result = runSeeder('local', { STRUT_SEED_ADMIN_PASSWORD: password })
+    expect(result.code, result.stderr).toBe(0)
+    expect(callOf(result.stdout)).toEqual({
+      db: 'the-db',
+      input: { name: 'Admin', email: 'boss@acme.test', password },
+    })
+    expect(result.stdout).toContain('Admin created: boss@acme.test')
+    expect(result.stdout.replace(/^CALL .*$/m, '')).not.toContain(password)
+    expect(result.stdout).not.toMatch(/One-time password/)
+  })
+
+  it('seeding again: first_admin_exists is "already done", so the seed goes on', () => {
+    const result = runSeeder('local', { STUB_MODE: 'first_admin_exists' })
+    expect(result.code, result.stderr).toBe(0)
+    expect(result.stdout).toContain('Admin exists (unchanged)')
+  })
+
+  it('every other refusal, and an error that only looks like auth`s, fails the seed with its message', () => {
+    for (const mode of ['email_taken', 'validation_failed', 'auth_tables_missing', 'look-alike']) {
+      const result = runSeeder('local', { STUB_MODE: mode })
+      expect(result.code, mode).not.toBe(0)
+      expect(result.stdout, mode).not.toContain('Admin created')
+      expect(result.stderr, mode).toMatch(mode === 'look-alike' ? /not auth/ : /refused by auth/)
+    }
   })
 
   it('never runs for APP_ENV=production or staging', () => {
     for (const appEnv of ['production', 'staging']) {
-      const result = runSeeder(planned, appEnv, 'SEED_ADMIN_EMAIL=boss@acme.test\n')
+      const result = runSeeder(appEnv)
       expect(result.code, result.stderr).toBe(0)
       expect(result.stdout).toBe('')
     }

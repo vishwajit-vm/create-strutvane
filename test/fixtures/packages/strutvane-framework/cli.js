@@ -179,32 +179,6 @@ async function seed(root, db, env) {
       const values = Object.values(row).map(sqlValue).join(', ')
       await db.exec(`${verb} INTO ${table} (${columns}) VALUES (${values})${tail}`)
     },
-    // The first admin: created once, with a password that is never stored in .env. The installer
-    // passes a fresh one through STRUT_SEED_ADMIN_PASSWORD (process environment only) and shows it
-    // once; a manual run generates one and prints it once. Either way the account must change it
-    // at the first sign-in.
-    createAdminOnce: async ({ name, email }) => {
-      if (!email)
-        throw new CommandError(
-          'SEED_ADMIN_EMAIL is empty in .env. Set it, then run: node strut db:seed',
-        )
-      if (
-        (await db.column(`SELECT COUNT(*) FROM users WHERE email = ${sqlValue(email)}`))[0] !== '0'
-      ) {
-        process.stdout.write(`Admin exists: ${email} (password unchanged)\n`)
-        return
-      }
-      const given = process.env.STRUT_SEED_ADMIN_PASSWORD
-      const password = given || readablePassword()
-      await db.exec(
-        `INSERT INTO users (name, email, password) VALUES (${sqlValue(name)}, ${sqlValue(email)}, ${sqlValue(hashPassword(password))})`,
-      )
-      process.stdout.write(`Admin created: ${email}\n`)
-      if (!given)
-        process.stdout.write(
-          `  One-time password (shown once, change it at first sign-in): ${password}\n`,
-        )
-    },
   }
   useSeedingDatabase(handle)
   // The real SeedContext: env is APP_ENV (a string), not the environment variables.
@@ -376,6 +350,46 @@ async function withDatabase(root, env, role, work) {
   }
 }
 
+/**
+ * A command a package contributes (package.json `strutvane.commands`, a module whose default export
+ * is a list of commands), like the real CLI's plugin commands: `auth:migration` comes from auth.
+ */
+async function packageCommand(root, name) {
+  const scope = join(root, 'node_modules', '@strutvane')
+  if (!existsSync(scope)) return undefined
+  for (const folder of readdirSync(scope)) {
+    const manifestFile = join(scope, folder, 'package.json')
+    if (!existsSync(manifestFile)) continue
+    const entry = JSON.parse(readFileSync(manifestFile, 'utf8')).strutvane?.commands
+    if (typeof entry !== 'string') continue
+    const { default: commands = [] } = await import(pathToFileURL(join(scope, folder, entry)).href)
+    const found = commands.find((command) => command.name === name)
+    if (found !== undefined) return found
+  }
+  return undefined
+}
+
+/** The command context a contributed command gets (the parts the stand-ins use). */
+function commandContext(root, rest) {
+  const line = (text = '') =>
+    process.stdout.write(`${text}
+`)
+  return {
+    flags: Object.fromEntries(
+      rest.filter((a) => a.startsWith('--')).map((a) => [a.slice(2), true]),
+    ),
+    requireProject: () => ({ root }),
+    out: {
+      line,
+      success: line,
+      info: line,
+      warn: (text) =>
+        process.stderr.write(`${text}
+`),
+    },
+  }
+}
+
 /** Entry point used by strut.js. Returns the exit code. */
 export async function run(argv, { root }) {
   const [given = 'list', ...rest] = argv
@@ -418,6 +432,9 @@ export async function run(argv, { root }) {
         return result.status ?? 1
       }
       default: {
+        const contributed = await packageCommand(root, command)
+        if (contributed !== undefined)
+          return (await contributed.run(commandContext(root, rest)))?.exitCode ?? 0
         const coming = comingInFramework(command)
         process.stderr.write(
           coming === undefined

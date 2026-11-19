@@ -11,12 +11,14 @@ Branch progress for the switch from inline templates to the vendored strutvane-s
 3. The app lives under the skeleton's `template/`, with lowercase folders.
 4. `.env.example` stays production-safe (`APP_ENV=production`, `APP_DEBUG=false`, no secrets); the
    installer writes the local values into `.env` only.
-5. The first-admin seeder calls `@strutvane/auth`'s driver-neutral `createFirstAdmin(db, { name, email })`,
-   which auth will add (it does not exist in auth v2 yet; v2 only has `openIdentityAdmin` in
-   `@strutvane/auth/admin`, PostgreSQL/database sessions only). Until the installed auth has it,
-   the generated seeder creates nothing, prints how to finish (`npm install @strutvane/auth@next`,
-   then `node strut db:seed --class AdminSeeder`) and setup goes on. Tested by running the
-   generated seeder for real with and without the export. (Decided 2026-11-18 by the coordinator.)
+5. The first-admin seeder imports `createFirstAdmin` and `FirstAdminError` from `@strutvane/auth`
+   (0.2.0-next.1, the floor the installer pins: `AUTH_RANGE`). `first_admin_exists` is skipped
+   (seeding re-runs); every other refusal fails the seed; setup's password comes from
+   `STRUT_SEED_ADMIN_PASSWORD`, and a generated `oneTimePassword` is printed once. The migrate step
+   runs `node strut auth:migration` before `migrate --seed` for apps with sign-in, so auth's
+   migrations are app files committed with the first commit. Tested by running the generated
+   seeder for real against a stand-in with auth's contract, and end to end (stand-in auth with the
+   real migration names, `user_roles`). (Coordinator request 2026-11-19.)
 
 ## Progress
 
@@ -55,9 +57,8 @@ Branch progress for the switch from inline templates to the vendored strutvane-s
   `migrations` (test passed). Again on 2026-11-18 against `fix/release-0.2` at f658430 (all 5
   framework blockers fixed): passed. Against `main` 6dfc239 it skips (compat ^0.1). Both releases
   still refuse the skeleton `user.policy.ts` in `node strut registry:build` (skeleton follow-up b).
-- **auth**: add `createFirstAdmin(db, { name, email })` (driver-neutral, idempotent; password
-  from `STRUT_SEED_ADMIN_PASSWORD` or generated and shown once; must-change flag in auth's own
-  migration).
+- **auth**: done in 0.2.0-next.1 (`createFirstAdmin`, `FirstAdminError`, `auth:migration`); the
+  installer uses it (see item 5).
 - **tooling**: the synced `check-package.mjs` (R5) refuses test folders/files in a tarball, which
   also hits template payload; the installer stores the app's tests as `_tests/…/*._test.ts` (like
   `_gitignore`). An allowlist for template folders in tooling would make that unnecessary.

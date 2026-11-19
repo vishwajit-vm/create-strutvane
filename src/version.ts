@@ -28,6 +28,14 @@ export const VERSION: string = manifest.version
 export const FRAMEWORK_RANGE = '^0.2.0-next.0'
 
 /**
+ * The lowest @strutvane/auth a generated app may install: 0.2.0-next.1 is the first with
+ * `createFirstAdmin()`, `FirstAdminError` and `auth:migration`, which the first-admin seeder and
+ * the migrate step use. Within the core train, but with its own floor: an older auth would make
+ * the seeder fail to import.
+ */
+export const AUTH_RANGE = '^0.2.0-next.1'
+
+/**
  * The framework version catalogue ranges are checked against: the lowest version
  * {@link FRAMEWORK_RANGE} accepts. A pre-release satisfies no catalogue range (they name releases
  * only), so add-ons are offered once the framework they declare is released (fail closed).

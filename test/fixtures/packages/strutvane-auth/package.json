@@ -1,9 +1,14 @@
 {
   "name": "@strutvane/auth",
-  "version": "0.2.0-next.0",
+  "version": "0.2.0-next.1",
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./commands": "./commands.js"
+  },
+  "strutvane": {
+    "commands": "./commands.js",
+    "migrations": "./migrations"
   }
 }

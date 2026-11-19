@@ -26,6 +26,11 @@ import { localPackages } from './helpers/local-packages.ts'
 const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url))
 const NPM = resolveNpmCli(process.env, process.execPath)
 const PACKAGES = localPackages()
+/** The migrations @strutvane/auth ships (its stand-in uses the real names). */
+const AUTH_MIGRATION_FILES = [
+  '2026_11_18_000001_add_auth_columns_to_users_table.ts',
+  '2026_11_18_000002_create_auth_tables.ts',
+]
 
 /**
  * A clean environment: no npm_* variables from the test runner, no git identity, a private git
@@ -138,8 +143,10 @@ describe('real end-to-end run (SQLite, no Docker)', () => {
     )
     expect(result.code, result.output).toBe(2)
     expect(result.output).toMatch(/Dependencies installed with npm/)
-    expect(result.output).toMatch(/Migrations run \(1 new, 1 total\)/)
+    expect(result.output).toMatch(/Migrations run \(3 new, 3 total\)/)
     expect(result.output).toMatch(/git config --global user.name/)
+    for (const file of AUTH_MIGRATION_FILES)
+      expect(existsSync(join(directory, 'database', 'migrations', file)), file).toBe(true)
     expect(result.output).toContain('cd acme-e2e; npm run setup')
 
     const state = JSON.parse(
@@ -196,7 +203,16 @@ describe('real end-to-end run (SQLite, no Docker)', () => {
       )
       expect(fake.every((row) => row['password'] === null)).toBe(true)
       // Applied migrations are recorded in Laravel's table (#36).
-      expect(db.prepare('SELECT COUNT(*) AS n FROM migrations').get()).toEqual({ n: 1 })
+      expect(db.prepare('SELECT COUNT(*) AS n FROM migrations').get()).toEqual({ n: 3 })
+      // auth:migration ran before migrate: auth's migrations are the app's files now, and the
+      // first admin holds auth's admin role (createFirstAdmin writes both rows at once).
+      expect(
+        db
+          .prepare(
+            "SELECT r.role FROM user_roles r JOIN users u ON u.id = r.user_id WHERE u.email = 'admin@acme-e2e.test'",
+          )
+          .all(),
+      ).toEqual([{ role: 'admin' }])
     } finally {
       db.close()
     }
@@ -295,9 +311,32 @@ describe('real end-to-end run (SQLite, no Docker)', () => {
     expect(committed).not.toContain('CANARY')
     expect(committed).toContain('.env.example')
     expect(committed).toContain('strut.js')
+    // auth's migrations are committed with the app (a clone migrates the same schema).
+    for (const file of AUTH_MIGRATION_FILES)
+      expect(committed).toContain(`database/migrations/${file}`)
     expect(committed.filter(isForbiddenInCommit)).toEqual([])
     expect(committed.some((path) => path.startsWith('.strutvane/local/'))).toBe(false)
     expect(committed.some((path) => path.startsWith('node_modules/'))).toBe(false)
+  })
+
+  it('seeding again keeps the first admin: first_admin_exists is skipped, nothing else changes', () => {
+    const env = cleanEnvironment(gitConfig)
+    const again = run(process.execPath, ['strut.js', 'db:seed'], directory, env)
+    expect(again.code, again.output).toBe(0)
+    expect(again.output).toMatch(/Admin exists \(unchanged\)/)
+    expect(again.output).not.toMatch(/One-time password/)
+    // auth:migration is idempotent: the app's copies are left exactly as they are.
+    const copy = run(process.execPath, ['strut.js', 'auth:migration'], directory, env)
+    expect(copy.code, copy.output).toBe(0)
+    expect(copy.output).toMatch(/Already there/)
+    const db = new DatabaseSync(join(directory, 'database', 'database.sqlite'))
+    try {
+      expect(db.prepare("SELECT COUNT(*) AS n FROM user_roles WHERE role = 'admin'").get()).toEqual(
+        { n: 1 },
+      )
+    } finally {
+      db.close()
+    }
   })
 
   it('node strut works: list, npm test (Vitest), and dev on 127.0.0.1 refusing foreign hosts', async () => {
@@ -406,8 +445,10 @@ describe('real end-to-end run (SQLite, no Docker)', () => {
     expect(result.code, result.output).toBe(0)
     expect(result.output).toMatch(/setting up from strutvane.json/)
     expect(result.output).toMatch(/Restored local files: \.env/)
-    expect(result.output).toMatch(/Migrations run \(1 new, 1 total\)/)
+    expect(result.output).toMatch(/Migrations run \(3 new, 3 total\)/)
     expect(result.output).toMatch(/already has its first commit/)
+    // Seeding again in a new database: a new first admin there (the clone's own database).
+    expect(result.output).toMatch(/Admin created/)
     const env2 = parseEnv(readFileSync(join(clone, '.env'), 'utf8'))
     expect(env2.get('APP_KEY')?.length).toBe(43)
     expect(env2.get('APP_KEY')).not.toBe(

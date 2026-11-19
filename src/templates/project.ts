@@ -27,6 +27,7 @@ import { projectPackages } from '../question-registry.ts'
 import { renderSkeletonApp } from '../skeleton/app.ts'
 import {
   ABSORBED_PACKAGES,
+  AUTH_RANGE,
   CORE_TRAIN,
   DRIVERS,
   FRAMEWORK_RANGE,
@@ -180,6 +181,7 @@ export function packagesFor(options: ProjectOptions): string[] {
  * with this installer, otherwise the newest compatible catalogue version.
  */
 function rangeOf(name: string, options: ProjectOptions): string {
+  if (name === '@strutvane/auth') return AUTH_RANGE
   if (CORE_TRAIN.includes(name)) return FRAMEWORK_RANGE
   const entry = installerCatalogue().entries.find((candidate) => candidate.package === name)
   if (entry === undefined) throw new Error(`${name} is not in the package catalogue`)
