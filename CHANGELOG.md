@@ -1,5 +1,12 @@
 # create-strutvane
 
+## 0.2.0-next.2
+
+### Patch Changes
+
+- 548044a: Apps with sign-in now use `@strutvane/auth` 0.2.0-next.1 (the minimum the installer asks for) for the first admin. Setup runs `node strut auth:migration` before `node strut migrate --seed`, so auth's migrations are the app's own files (committed with the first commit) and its tables exist before seeding. The generated `admin.seeder.ts` imports `createFirstAdmin` and `FirstAdminError` from `@strutvane/auth` directly: seeding again skips an existing first admin (`first_admin_exists`), every other refusal fails the seed with auth's message, setup's one-time password is passed to auth from the environment, and a password auth generates on a manual run is printed once (it is stored nowhere else).
+- 7dfd467: Setup no longer crashes when a program exits before reading its input: on Linux, `npm run setup` could die with `write EPIPE` at the git step (`git --version` exits at once). Programs that get no input now start with an empty stdin, and a failed write is logged, not fatal. Docker in "Windows containers" mode (Docker Desktop switched to Windows containers, or Windows Server) is no longer treated as usable: Docker mode is not offered as the default there, and an explicit `--docker` stops with exit 2 and how to switch to Linux containers, instead of failing at `compose up` with "no matching manifest".
+
 ## 0.2.0-next.1
 
 ### Minor Changes
