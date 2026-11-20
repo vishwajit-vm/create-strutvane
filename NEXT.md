@@ -79,13 +79,20 @@ Once strutvane-skeleton tags `v0.2.0-next.0`:
 `STRUT_SKELETON_REPO=<clone>`, commit `skeleton/`. (A skeleton fix for the follow-ups above means
 a new pin anyway.)
 
-## Gate status (stop 2026-11-18, usage limit)
+## Gate status (fix/macos, 2026-11-20)
 
-- Full gate (`npm run ci`) NOT run yet on this branch: run 1 was started and stopped at the STOP.
-  Next: gate 3x with `STRUT_SKELETON_REPO=<skeleton clone>`, then fill R1/R2 in RELEASE-READINESS.md.
-- Verified by focused runs only (not the full gate): SQLite e2e 10/10, skeleton-render +
-  generated-apps 33/33, vendoring 9/9, unit suite 459 passed / 2 skipped (before the last fixes),
-  check-package OK (74 files), framework integration passed on f658430.
+- Branch `fix/macos` (from main cc34ddb): the two macOS CI failures of release run 44578775297.
+  1. Generated apps refuse fsevents' install script (`"fsevents": false`, name-only;
+     `REFUSED_INSTALL_SCRIPTS` + `appAllowScripts`). Proven with real npm 11.19 and the real
+     fsevents 2.3.3 resolved for darwin (`test/install-scripts.e2e.test.ts`, runs on every OS).
+  2. The forwarding tests compare real paths (/var vs /private/var), plus a symlinked-folder test.
+- Windows gate after plain `npm ci`: B1 green (531 passed / 3 skipped); B2, B3 running.
+  Earlier runs on the same commit: run 3 green; run 1 failed once on "Port 3001 is in use"
+  (another process took the dev port between setup and `node strut dev`, shared machine);
+  run 2 failed everywhere during a network outage (ENOTFOUND, registry timeouts). Neither is
+  related to the change.
+- Linux container (node:24, full suite): 522 passed / 12 skipped (Docker suites skip there).
+- macOS itself is only checked by GitHub CI after a push.
 
 ## How to verify
 
