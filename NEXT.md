@@ -86,11 +86,16 @@ a new pin anyway.)
      `REFUSED_INSTALL_SCRIPTS` + `appAllowScripts`). Proven with real npm 11.19 and the real
      fsevents 2.3.3 resolved for darwin (`test/install-scripts.e2e.test.ts`, runs on every OS).
   2. The forwarding tests compare real paths (/var vs /private/var), plus a symlinked-folder test.
-- Windows gate after plain `npm ci`: B1 green (531 passed / 3 skipped); B2, B3 running.
-  Earlier runs on the same commit: run 3 green; run 1 failed once on "Port 3001 is in use"
-  (another process took the dev port between setup and `node strut dev`, shared machine);
-  run 2 failed everywhere during a network outage (ENOTFOUND, registry timeouts). Neither is
-  related to the change.
+- Windows gate (code at 8dcea2b), 7 runs on a heavily shared machine: 3 green (run 3, and after a
+  plain `npm ci` B1 and B3: 531 passed / 3 skipped each), 4 failed for environmental reasons,
+  none in the changed code:
+  - run 1: "Port 3001 is in use" (another process took the dev port between setup and
+    `node strut dev`);
+  - run 2: network outage (ENOTFOUND, registry timeouts everywhere);
+  - B2: a throw-away MariaDB container exited before it was ready (own-server e2e; other
+    sessions had many database containers running);
+  - B4: the e2e first run's `npm install` exceeded its 240 s timeout (B4 took 30 minutes in all).
+  Not yet 3 consecutive green runs: re-run the gate 3x when the machine is quieter.
 - Linux container (node:24, full suite): 522 passed / 12 skipped (Docker suites skip there).
 - macOS itself is only checked by GitHub CI after a push.
 
