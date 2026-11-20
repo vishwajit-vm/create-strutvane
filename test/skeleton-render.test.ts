@@ -126,10 +126,10 @@ describe('.env and .env.example from the skeleton example (INSTALLER.md §3)', (
           [...f.content.matchAll(/env\.\w+\('([A-Z0-9_]+)'/g)].map((m) => m[1]),
         ),
       )
-      // (SQLite apps list the server keys as commented lines, ready to switch.)
+      // Set, never only commented out, SQLite apps included (decision #132).
       for (const key of read) {
         if (key === undefined) continue
-        expect(new RegExp(`^(# )?${key}=`, 'm').test(exampleText), `${key} (set ${index})`).toBe(
+        expect(new RegExp(`^${key}=`, 'm').test(exampleText), `${key} (set ${index})`).toBe(
           true,
         )
       }

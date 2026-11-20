@@ -154,8 +154,15 @@ describe('Docker failures', () => {
     expect(result.output()).toMatch(/Docker is not installed/)
     const env = result.env()
     expect(env.get('DB_CONNECTION')).toBe('sqlite')
-    expect(env.get('DB_HOST')).toBeUndefined() // commented out
-    expect(readFileSync(join(result.directory, '.env'), 'utf8')).toMatch(/^# DB_HOST=db$/m)
+    // Every key the framework reads stays listed (#132), with the SQLite app's neutral value; the
+    // Docker password is gone, and only Docker-only keys are commented out.
+    expect(env.get('DB_HOST')).toBe('127.0.0.1')
+    expect(env.get('DB_PASSWORD')).toBe('')
+    expect(env.get('MAIL_HOST')).toBe('127.0.0.1')
+    const envText = readFileSync(join(result.directory, '.env'), 'utf8')
+    expect(envText).not.toMatch(/^# DB_HOST=/m)
+    expect(envText).toMatch(/^# COMPOSE_PROJECT_NAME=/m)
+    expect(envText).toMatch(/^# DB_ROOT_PASSWORD=/m)
     expect(
       parseEnv(readFileSync(join(result.directory, '.env.example'), 'utf8')).get('DB_CONNECTION'),
     ).toBe('sqlite')

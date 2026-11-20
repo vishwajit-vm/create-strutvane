@@ -3,9 +3,10 @@
  * app still starts.
  *
  * What it changes (and only this):
- * - `.env` and `.env.example`: `DB_CONNECTION=sqlite`, the SQLite file paths, mail to the log, and
- *   the server/Docker-only keys commented out (Laravel does the same for SQLite), so nothing is
- *   lost if the user switches back later;
+ * - `.env` and `.env.example`: `DB_CONNECTION=sqlite`, the SQLite file paths and mail to the log.
+ *   A key the framework reads stays listed (decision #132: every key is in `.env`) with the value
+ *   the new mode's own `.env.example` gives it (`DB_HOST=127.0.0.1`, an empty `DB_PASSWORD`);
+ *   only Docker-only keys (`COMPOSE_PROJECT_NAME`, `FORWARD_*`, …) are commented out;
  * - `strutvane.json`: docker false, so `node strut` stops forwarding into a container;
  * - removes the git-ignored `docker/` folder (it would start containers nobody uses);
  * - rewrites README.md and AGENTS.md, which describe how the app runs;
@@ -15,7 +16,7 @@
  */
 import { rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { commentOutEnvKey, setEnvValue } from '../env-file.ts'
+import { commentOutEnvKey, parseEnv, setEnvValue } from '../env-file.ts'
 import { answersOf, type ProjectOptions, resolveOptions } from '../options.ts'
 import type { SetupState } from '../setup-state.ts'
 import { buildEnvSections, type TypedSecrets } from '../templates/env.ts'
@@ -44,14 +45,47 @@ const SERVER_KEYS = [
 /** Files regenerated for the new mode (they describe how the app runs; none holds user edits yet). */
 const REGENERATED: ReadonlySet<string> = new Set(['README.md', 'AGENTS.md', 'strutvane.json'])
 
+/**
+ * Retire `keys` the new mode does not use. A key the new mode's own `.env.example` lists
+ * (`listed`: the framework reads it) keeps being listed with that file's neutral value, so `.env`
+ * still holds every key (decision #132) and nothing secret from the old mode survives (a generated
+ * Docker password becomes empty). A key it does not list (Docker-only) is commented out, so
+ * nothing is lost if the user switches back later.
+ *
+ * @example
+ * retireKeys('DB_HOST=db
+STRUT_UID=1000
+', ['DB_HOST', 'STRUT_UID'], new Map([['DB_HOST', '127.0.0.1']]))
+ * // 'DB_HOST=127.0.0.1
+# STRUT_UID=1000
+'
+ */
+export function retireKeys(
+  text: string,
+  keys: readonly string[],
+  listed: ReadonlyMap<string, string>,
+): string {
+  let next = text
+  for (const key of keys) {
+    const neutral = listed.get(key)
+    next = neutral === undefined ? commentOutEnvKey(next, key) : setEnvValue(next, key, neutral)
+  }
+  return next
+}
+
+/** The keys (and values) of the `.env.example` a project with `options` gets. */
+function exampleKeys(options: ProjectOptions, typed: TypedSecrets = {}): Map<string, string> {
+  const example = renderProject(options, typed).find((file) => file.path === '.env.example')
+  return parseEnv(example?.content ?? '')
+}
+
 /** Point one env file at SQLite. */
-function sqliteEnv(text: string): string {
+function sqliteEnv(text: string, listed: ReadonlyMap<string, string>): string {
   let next = setEnvValue(text, 'DB_CONNECTION', 'sqlite')
   next = setEnvValue(next, 'DB_DATABASE', 'database/database.sqlite')
   next = setEnvValue(next, 'DB_TEST_DATABASE', 'database/testing.sqlite')
   next = setEnvValue(next, 'MAIL_MAILER', 'log')
-  for (const key of SERVER_KEYS) next = commentOutEnvKey(next, key)
-  return next
+  return retireKeys(next, SERVER_KEYS, listed)
 }
 
 /**
@@ -62,9 +96,6 @@ function sqliteEnv(text: string): string {
  * state = switchToSqlite('C:/code/my-app', state)
  */
 export function switchToSqlite(directory: string, state: SetupState): SetupState {
-  const files: EnvFile[] = ['.env', '.env.example']
-  for (const file of files) writeEnvFile(directory, file, sqliteEnv(readEnvFile(directory, file)))
-  rmSync(join(directory, 'docker'), { recursive: true, force: true })
   const stored = {
     ...state.options,
     database: 'sqlite' as const,
@@ -72,13 +103,22 @@ export function switchToSqlite(directory: string, state: SetupState): SetupState
     connection: undefined,
   }
   const options: ProjectOptions = { ...stored, directory }
+  const listed = exampleKeys(options)
+  const files: EnvFile[] = ['.env', '.env.example']
+  for (const file of files)
+    writeEnvFile(directory, file, sqliteEnv(readEnvFile(directory, file), listed))
+  rmSync(join(directory, 'docker'), { recursive: true, force: true })
   for (const file of renderProject(options)) {
     if (REGENERATED.has(file.path)) writeFileSync(join(directory, file.path), file.content)
   }
   return { ...state, options: stored }
 }
 
-/** Keys that only exist in Docker mode (or for roles setup creates); commented out for your own server. */
+/**
+ * Keys that only Docker mode (or the roles setup creates) fills in. For your own server, the ones
+ * the framework reads go back to their neutral value (`MAIL_HOST=127.0.0.1`), the rest are
+ * commented out (see {@link retireKeys}).
+ */
 const DOCKER_ONLY_KEYS = [
   'FORWARD_DB_PORT',
   'DB_ROOT_PASSWORD',
@@ -92,7 +132,7 @@ const DOCKER_ONLY_KEYS = [
   'STRUT_GID',
 ] as const
 
-/** Connection keys that may be absent for your own server (written only when set). */
+/** Connection keys your own server may not use (written only when set, else neutral/empty). */
 const OPTIONAL_CONNECTION_KEYS = ['DB_SOCKET', 'DB_SSL_CA', 'DB_URL'] as const
 
 /**
@@ -123,6 +163,7 @@ export function useOwnServer(
   const section = buildEnvSections(resolved, typed).find(
     (candidate) => candidate.title === 'Database',
   )
+  const listed = exampleKeys(resolved, typed)
   const files: EnvFile[] = ['.env', '.env.example']
   for (const file of files) {
     let text = readEnvFile(directory, file)
@@ -135,8 +176,11 @@ export function useOwnServer(
       )
     }
     const written = new Set((section?.vars ?? []).map((variable) => variable.key))
-    for (const key of [...DOCKER_ONLY_KEYS, ...OPTIONAL_CONNECTION_KEYS])
-      if (!written.has(key)) text = commentOutEnvKey(text, key)
+    text = retireKeys(
+      text,
+      [...DOCKER_ONLY_KEYS, ...OPTIONAL_CONNECTION_KEYS].filter((key) => !written.has(key)),
+      listed,
+    )
     text = setEnvValue(text, 'MAIL_MAILER', 'log')
     writeEnvFile(directory, file, text)
   }

@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/vishwajit-vm/strutvane-skeleton",
-  "ref": "ea317419597007d1a23189320a56e4958605142f",
-  "commit": "ea317419597007d1a23189320a56e4958605142f",
+  "ref": "c7884a9d81ab7aba8adfeca8475b3b5afd542fe3",
+  "commit": "c7884a9d81ab7aba8adfeca8475b3b5afd542fe3",
   "files": [
     {
       "path": "LICENSE",
@@ -31,7 +31,7 @@
     {
       "path": "template/.env.example",
       "stored": "template/.env.example",
-      "blob": "675a8cff9f22e6c38f618597a839befbcce32c2f"
+      "blob": "bb902fa210e43876fc53ecf1a31f8cedbc5f32e9"
     },
     {
       "path": "template/.strutvane/resources.json",
@@ -91,7 +91,7 @@
     {
       "path": "template/README.md",
       "stored": "template/README.md",
-      "blob": "14bad99030187ee7daa0b6e194b9ab3da6d8fa62"
+      "blob": "820eaef52558050997cd0828f88e233c28c00c66"
     },
     {
       "path": "template/.gitignore",
@@ -181,12 +181,12 @@
     {
       "path": "template/config/database.ts",
       "stored": "template/config/database.ts",
-      "blob": "8908132f0049aaef8615511a63a08620c0da7145"
+      "blob": "50e05aec87f1604dafe5386af98db53e19061a80"
     },
     {
       "path": "template/config/filesystems.ts",
       "stored": "template/config/filesystems.ts",
-      "blob": "486c09ab5173129d22239fd508a9b7e865458ba9"
+      "blob": "60dbbf5810bd0bdf3f31acef0ceccb53fc6b1d09"
     },
     {
       "path": "template/config/index.ts",

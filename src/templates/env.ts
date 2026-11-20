@@ -1,10 +1,13 @@
 /**
  * The generated app's environment variables. The skeleton's `.env.example` is the base: it lists
- * every key its config files read, production-safe (`APP_ENV=production`, `APP_DEBUG=false`) and
- * with every secret empty. One description here then renders both files from it (skeleton
- * INSTALLER.md §3): `.env` gets this machine's local values, `.env.example` keeps its safe values,
- * and keys the skeleton does not have yet (Docker mode, mail, the first admin, AI) are appended to
- * both under their own heading.
+ * **every key the framework reads** (decision #132: app, database with the extra `DB_MYSQL_*`,
+ * `DB_PGSQL_*` and `DB_SQLITE_*` connections, logging, cache, session, queue, mail, files/S3,
+ * broadcast, and `REDIS_*` for `@strutvane/redis`), grouped with a comment each, server-free
+ * values filled in, production-safe (`APP_ENV=production`, `APP_DEBUG=false`) and with every
+ * secret empty. One description here then renders both files from it (skeleton INSTALLER.md §3):
+ * `.env` gets this machine's local values (set in place, so each key appears once), `.env.example`
+ * keeps its safe values, and keys the skeleton does not have (Docker mode, the first admin, AI)
+ * are appended to both under their own heading. Both files end up with the same keys.
  *
  * Generated secrets are written **empty** here; the "secrets" setup step fills them into `.env`
  * only. A database password the user typed (their own server, no Docker) is the one value written
