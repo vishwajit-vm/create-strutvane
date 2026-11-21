@@ -75,14 +75,14 @@
     "@clack/prompts": "1.9.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.7",
+    "@biomejs/biome": "2.6.8",
     "@changesets/cli": "3.0.3",
     "@types/node": "24.19.2",
-    "@vitest/coverage-v8": "5.1.0",
-    "fast-check": "4.10.2",
+    "@vitest/coverage-v8": "5.1.1",
+    "fast-check": "4.10.3",
     "tsdown": "0.23.7",
     "typescript": "6.0.3",
-    "vitest": "5.1.0"
+    "vitest": "5.1.1"
   },
   "strutvane": {
     "allowConsole": []
