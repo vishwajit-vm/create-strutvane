@@ -128,9 +128,9 @@ describe('strutvane.json', () => {
           for (const absorbed of ABSORBED_PACKAGES) expect(named).not.toContain(absorbed)
           expect(named).toContain('@strutvane/framework')
           expect(manifest['dependencies']?.['@strutvane/framework']).toBe('^0.2.0-next.0')
-          // The first auth with createFirstAdmin and auth:migration (the seeder imports them).
+          // The first auth with the owner role and role scopes (the role map in config/auth.ts).
           const auth = manifest['dependencies']?.['@strutvane/auth']
-          if (auth !== undefined) expect(auth).toBe('^0.2.0-next.1')
+          if (auth !== undefined) expect(auth).toBe('^0.2.0-next.2')
         },
       ),
       { numRuns: 200 },

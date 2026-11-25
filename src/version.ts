@@ -28,12 +28,14 @@ export const VERSION: string = manifest.version
 export const FRAMEWORK_RANGE = '^0.2.0-next.0'
 
 /**
- * The lowest @strutvane/auth a generated app may install: 0.2.0-next.1 is the first with
- * `createFirstAdmin()`, `FirstAdminError` and `auth:migration`, which the first-admin seeder and
- * the migrate step use. Within the core train, but with its own floor: an older auth would make
- * the seeder fail to import.
+ * The lowest @strutvane/auth a generated app may install. 0.2.0-next.1 is the first with
+ * `createFirstAdmin()`, `FirstAdminError` and `auth:migration` (the first-admin seeder and the
+ * migrate step use them); 0.2.0-next.2 is the first where a team's creator holds the reserved
+ * `owner` role and role map scopes separate platform roles from team roles, which the generated
+ * `config/auth.ts` role map relies on (with 0.2.0-next.1 a team's creator would hold `admin`, a
+ * platform role there, and get no team grants). Within the core train, but with its own floor.
  */
-export const AUTH_RANGE = '^0.2.0-next.1'
+export const AUTH_RANGE = '^0.2.0-next.2'
 
 /**
  * The framework version catalogue ranges are checked against: the lowest version

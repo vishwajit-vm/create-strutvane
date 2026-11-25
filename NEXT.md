@@ -1,3 +1,50 @@
+# NEXT.md: create-strutvane `fix/tenant-role-scopes` (2026-11-25)
+
+Compatibility with `@strutvane/auth` 0.2.0-next.2 (auth branch `fix/hardening-2026-11-20`): a role
+map entry without a `scope` is a platform role, team roles say `scope: 'tenant'`, a team's
+creator holds the reserved `owner` role, `admin` is platform-only.
+
+## Done
+- `src/templates/auth-roles.ts` (new): `authRoleMap(options)` builds the role map from the
+  starting roles (question 10) and the teams answer (question 11). Every role states its scope.
+  Teams off: all starting roles `global`, no `owner`. Teams on: `admin` is the only `global`
+  role; `owner` (`['*']`) and the other starting roles are `tenant`. Permissions follow hub
+  docs/07 §2.7 (admin `*` + exact user grants; member view/create + own update/delete; viewer
+  view). `manager` is not defined in docs/07: here it is view/create/update/delete on any
+  non-excluded record (a choice for the lead to confirm). `wildcardExclude` is docs/07 §4.4's
+  complete list; `newModelDefaults: 'inherit-role-patterns'`; `defaultRoles: []`.
+  `ROLE_PRESETS` moved here from `app-files.ts`.
+- `configAuth` writes that map into `config/auth.ts`, with a comment on scopes, `owner` and
+  `admin` (teams-on and teams-off variants). `config/permissions.ts` now says the roles live in
+  `config/auth.ts`.
+- `AUTH_RANGE` is `^0.2.0-next.2` (with next.1 a team's creator would hold `admin`, a platform
+  role there, and get no team grants). **This installer can only be released after auth
+  0.2.0-next.2 is on npm.**
+- Tests: `test/auth-roles.test.ts` (auth's boot rules mirrored, property test over presets x
+  teams, the generated file and comments); `generated-files.test.ts` range updated.
+- Checked once by hand (not in CI): every generated map (teams x presets x email/magic-link)
+  compiles with auth `fix/hardening-2026-11-20` (da3c6f5) `compileRoleMap`, `partitionRoles`,
+  `engineConfigFrom` and `defineAuthConfig`; with teams, platform roles = [admin] and tenant
+  roles = [owner, ...]; admin gets no grants inside a team and members none outside.
+- Changeset: `.changeset/tenant-role-scopes.md` (patch, pre `next`, as the coordinator asked;
+  CLAUDE.md says changesets are `minor` before 1.0, so the coordinator may want it changed).
+
+## Next
+- **Move the skeleton pin** once skeleton `fix/tenant-role-scopes` is merged: `npm run
+  vendor:skeleton -- --ref <merged skeleton commit>` (never hand-edit `skeleton/`). The vendored
+  template's `config/auth.ts` is overwritten by `configAuth` in every app, so apps are already
+  right with the old pin; the move only keeps the vendored copy (and its auth range
+  `^0.2.0-next.2` in `skeleton.json`, which `AUTH_RANGE` overrides anyway) in step.
+- Hub docs/07 §4.4 still says a role's default scope is `'any'`; auth next.2 made it `'global'`.
+
+## How to verify
+```bash
+npm ci
+npm run ci        # 3x
+```
+
+---
+
 # NEXT.md: create-strutvane `v2/installer`
 
 Branch progress for the switch from inline templates to the vendored strutvane-skeleton
