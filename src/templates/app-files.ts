@@ -17,7 +17,8 @@
  *
  * @module
  */
-import type { ProjectOptions, RoleSet } from '../options.ts'
+import type { ProjectOptions } from '../options.ts'
+import { authRoleMap, ROLE_PRESETS } from './auth-roles.ts'
 
 /** A generated file: POSIX path relative to the project root, and its text. */
 export interface GeneratedFile {
@@ -26,12 +27,6 @@ export interface GeneratedFile {
   /** Written with mode 0o755 on macOS and Linux (`strut.js`). */
   readonly executable?: boolean
 }
-
-/** The roles each starting-role preset creates (decision #27). */
-export const ROLE_PRESETS: Readonly<Record<RoleSet, readonly string[]>> = Object.freeze({
-  'admin-member': Object.freeze(['admin', 'member']),
-  'admin-manager-member-viewer': Object.freeze(['admin', 'manager', 'member', 'viewer']),
-})
 
 /**
  * The installer-only app files for these options (the skeleton's files come separately).
@@ -119,7 +114,8 @@ function answerConfigFiles(options: ProjectOptions): GeneratedFile[] {
     files.push(
       dataConfig(
         'config/permissions.ts',
-        '// The roles new apps start with. Change them here; policies decide what each role may do.',
+        `// The starting-roles answer (question 10), kept as a record. The roles themselves (where each
+// is held and what each may do) are the role map in config/auth.ts: change them there.`,
         { preset: options.roles, roles: ROLE_PRESETS[options.roles] },
       ),
     )
@@ -149,7 +145,9 @@ function answerConfigFiles(options: ProjectOptions): GeneratedFile[] {
  * `config/auth.ts` (the skeleton's `configAuth` generator). Sign-in settings (decision #26): the
  * features live here, written from the installer's answers, never in `AUTH_*` keys. The names
  * are the one list of decisions #25 and #107; every optional feature is stated explicitly (#28).
- * Plain data, so the file loads without the auth package.
+ * Plain data, so the file loads without the auth package. It also holds the role map
+ * ({@link authRoleMap}): every role states its scope, team roles are `scope: 'tenant'` with the
+ * reserved `owner` for a team's creator, and `admin` stays a platform role (auth 0.2.0-next.2).
  *
  * @example
  * configAuth(options) // "// Sign-in features ...\nexport default { features: { password: true, ..."
@@ -178,18 +176,43 @@ export function configAuth(options: ProjectOptions): string {
   return `// Sign-in features, read by @strutvane/auth and chosen in the installer. Change them here, not in
 // .env: APP_KEY is the one root secret, and every signing and encryption key is derived from it.
 // Plain data on purpose, so the file loads without the auth package.
-${mode}export default ${JSON.stringify(
+${mode}//
+${options.teams ? ROLES_COMMENT_TEAMS : ROLES_COMMENT}export default ${JSON.stringify(
     {
       features,
       // Client ids and secrets for these come from .env, never from this file.
       social: options.social,
       enterpriseSso: options.sso,
+      // The role map: roles, where each is held (scope) and what each may do.
+      ...authRoleMap(options),
     },
     null,
     2,
   )}
 `
 }
+
+/** What every role map comment says: scopes, `admin` and the wildcard bounds. */
+const ROLES_COMMENT_COMMON = `// Roles: what each role may do, on top of the policies in app/policies (a policy's deny always
+// wins). Every role says where it is held, and a role without a scope is a platform role:
+// - scope "global": a platform role, held outside teams. "admin" is the platform administrator
+//   (the first admin from setup) and is never a team role.
+// - scope "tenant": a team role, held inside one team.
+// wildcardExclude lists the records no "*" pattern ever reaches (identity, access, teams, audit);
+// grant those by exact name, like "user.view".
+`
+
+/** The role map comment of an app without teams. */
+const ROLES_COMMENT = `${ROLES_COMMENT_COMMON}// Teams are off, so every role here is a platform role. If you turn teams on, give the roles
+// team members hold scope "tenant" and add the reserved "owner" role (the team's creator):
+//   "owner": { "scope": "tenant", "permissions": ["*"] }
+`
+
+/** The role map comment of an app with teams. */
+const ROLES_COMMENT_TEAMS = `${ROLES_COMMENT_COMMON}// Teams are on: "admin" is the one platform role. Whoever creates a team holds the reserved
+// "owner" role there (never a platform role); the people they invite hold your team roles. Inside
+// a team, "*" patterns only reach team data (models with a tenantId column).
+`
 
 /**
  * `config/tenancy.ts` (the skeleton's `tenancyConfig` generator). Teams (decision #90):

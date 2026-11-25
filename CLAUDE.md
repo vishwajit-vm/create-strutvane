@@ -15,7 +15,7 @@ The v2 installer: `npm create strutvane@next my-app` (`@latest` from 1.0) (hub b
 ## Status
 
 - **v2, `0.2.0-next.N`, lockstep with the core train (decision #128).** Changesets is in pre mode (`next`); changesets are `minor` before 1.0. Printed commands use `releaseTag()` (`@next` for a pre-release). The release gates are hub `docs/19-production-readiness.md` (R1–R9); evidence goes in `RELEASE-READINESS.md`.
-- Generated apps depend on `@strutvane/framework` `^0.2.0-next.0` (and the core train at the same range). Until those are on npm, real installs stop at the install step; the end-to-end tests use local stand-ins (`STRUT_LOCAL_PACKAGES`, `test/fixtures/packages`).
+- Generated apps depend on `@strutvane/framework` `^0.2.0-next.0` (and the core train at the same range, except `@strutvane/auth`, whose floor is `AUTH_RANGE`, `^0.2.0-next.2`). Until those are on npm, real installs stop at the install step; the end-to-end tests use local stand-ins (`STRUT_LOCAL_PACKAGES`, `test/fixtures/packages`).
 - npm only (`npm ci`, `npm run ci`); no pnpm.
 
 ## Code map (`src/`, one concept per file)
@@ -32,7 +32,7 @@ The v2 installer: `npm create strutvane@next my-app` (`@latest` from 1.0) (hub b
 | `setup-state.ts` | `.strutvane/local/setup.json`, or `strutvane.json` for a fresh clone |
 | `steps/*` | files, secrets, ports, database (Docker or your own server), install, migrate, git; recovery choices |
 | `skeleton/app.ts`, `skeleton/vendor-record.ts` | The app is rendered from the vendored strutvane-skeleton (`skeleton/` at the repo root, pinned in `skeleton/vendor.json`, refreshed only by `npm run vendor:skeleton`) with the skeleton's own `renderSkeleton`/`resolveAnswers` |
-| `templates/*` | What the installer adds on top (pure functions): `project.ts` (assembly, deps), `app-files.ts` (answer-only configs, `config/auth.ts`/`tenancy.ts` generators, admin seeder), `env.ts` (merge onto the skeleton's `.env.example`), `compose.ts`, `workflow-files.ts` |
+| `templates/*` | What the installer adds on top (pure functions): `project.ts` (assembly, deps), `app-files.ts` (answer-only configs, `config/auth.ts`/`tenancy.ts` generators, admin seeder), `auth-roles.ts` (the role map in `config/auth.ts`: explicit scopes, `admin` platform-only, team roles and `owner` `scope: 'tenant'` with teams), `env.ts` (merge onto the skeleton's `.env.example`), `compose.ts`, `workflow-files.ts` |
 
 ## Key behaviours to keep (tests enforce them)
 
